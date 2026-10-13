@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Cadence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=JetBrains+Mono:wght@400;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+  <main class="wrap">
+    <header class="top">
+      <h1>cadence<span class="beat"></span></h1>
+      <p class="tag">A login that checks <em>how</em> you type your password, not just what you type.</p>
+    </header>
+
+    <nav class="tabs" role="tablist">
+      <button class="tab active" data-tab="signup" role="tab">Sign up</button>
+      <button class="tab" data-tab="login" role="tab">Log in</button>
+      <button class="tab" data-tab="test" role="tab">Test it</button>
+      <button class="tab" data-tab="how" role="tab">How it works</button>
+    </nav>
+
+    <section class="panel active" id="signup">
+      <div class="card">
+        <label class="field">
+          <span>Username</span>
+          <input id="su-user" type="text" autocomplete="off" spellcheck="false" maxlength="32">
+        </label>
+
+        <form id="su-form" class="field" autocomplete="off">
+          <span>Type your password and press Enter. Do it {{ enroll_samples }} times.</span>
+          <input id="su-pass" type="password" autocomplete="new-password" placeholder="at least 6 characters">
+          <div class="strip" id="su-strip"></div>
+        </form>
+
+        <div class="dots" id="su-dots" data-total="{{ enroll_samples }}"></div>
+        <p class="msg" id="su-msg">No corrections. If you make a typo, just press Enter and redo it.</p>
+
+        <div class="row">
+          <button id="su-create" class="btn" disabled>Create account</button>
+          <button id="su-reset" class="btn ghost" type="button">Start over</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel" id="login">
+      <div class="card">
+        <label class="field">
+          <span>Username</span>
+          <input id="li-user" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <form id="li-form" class="field" autocomplete="off">
+          <span>Password, then Enter</span>
+          <input id="li-pass" type="password" autocomplete="off">
+          <div class="strip" id="li-strip"></div>
+        </form>
+        <p class="msg" id="li-msg"></p>
+      </div>
+
+      <div class="card result" id="li-result" hidden>
+        <div class="verdict" id="li-verdict"></div>
+        <div class="meter">
+          <div class="meter-track"><div class="meter-fill" id="li-fill"></div><div class="meter-line"></div></div>
+          <div class="meter-labels"><span>no match</span><span>pass line</span><span>perfect</span></div>
+        </div>
+        <p class="mono small" id="li-numbers"></p>
+
+        <div class="charts">
+          <figure>
+            <figcaption>How long you held each key (ms)</figcaption>
+            <canvas id="chart-hold" height="190"></canvas>
+          </figure>
+          <figure>
+            <figcaption>Gap from one key press to the next (ms)</figcaption>
+            <canvas id="chart-gap" height="190"></canvas>
+          </figure>
+        </div>
+        <p class="legend"><i class="sw saved"></i>your usual rhythm <i class="sw band"></i>normal range <i class="sw now"></i>this attempt</p>
+      </div>
+    </section>
+
+    <section class="panel" id="test">
+      <div class="card">
+        <p class="lead">Hand the keyboard to friends, give them your password, and see if they can get in. Mark each attempt so the numbers mean something.</p>
+        <label class="field">
+          <span>Account to test</span>
+          <input id="t-user" type="text" autocomplete="off" spellcheck="false">
+        </label>
+        <div class="who" role="radiogroup">
+          <label><input type="radio" name="who" value="owner" checked> It's me</label>
+          <label><input type="radio" name="who" value="impostor"> Someone else</label>
+        </div>
+        <form id="t-form" class="field" autocomplete="off">
+          <span>Password, then Enter</span>
+          <input id="t-pass" type="password" autocomplete="off">
+          <div class="strip" id="t-strip"></div>
+        </form>
+        <p class="msg" id="t-msg"></p>
+        <ul class="log" id="t-log"></ul>
+      </div>
+
+      <div class="card">
+        <div class="stats">
+          <div><b id="s-owner">0</b><span>your attempts</span></div>
+          <div><b id="s-imp">0</b><span>impostor attempts</span></div>
+          <div><b id="s-frr">–</b><span>you locked out (FRR)</span></div>
+          <div><b id="s-far">–</b><span>impostors let in (FAR)</span></div>
+        </div>
+
+        <label class="field">
+          <span>Threshold <b class="mono" id="s-thr-val"></b> <small>(lower = stricter)</small></span>
+          <input id="s-thr" type="range" min="0.5" max="6" step="0.05">
+        </label>
+        <canvas id="chart-rates" height="200"></canvas>
+        <p class="legend"><i class="sw frr"></i>you locked out <i class="sw far"></i>impostors let in</p>
+
+        <div class="row">
+          <button id="s-suggest" class="btn ghost" type="button">Use best threshold</button>
+        </div>
+        <div class="row">
+          <input id="s-pw" type="password" placeholder="account password" autocomplete="off">
+          <button id="s-save" class="btn" type="button">Save threshold</button>
+          <button id="s-clear" class="btn ghost danger" type="button">Clear test data</button>
+        </div>
+        <p class="msg" id="s-msg"></p>
+      </div>
+    </section>
+
+    <section class="panel" id="how">
+      <div class="card prose">
+        <h2>The idea</h2>
+        <p>Everyone types their password with their own rhythm. Some people hold keys longer, some roll quickly through letters they type a lot, some pause before the numbers. That rhythm is surprisingly hard to copy, even if you know the password.</p>
+        <h2>What gets measured</h2>
+        <p>For every key: how long it's held down. Between every pair of keys: the time from one press to the next, and from one release to the next press. A 10 character password gives 28 numbers per attempt.</p>
+        <h2>Signing up</h2>
+        <p>You type the password 8 times. The app works out your average for each of those numbers and how much it usually varies. If one sample is way off (you got distracted, a typo you pushed through) it's thrown out.</p>
+        <h2>Logging in</h2>
+        <p>Each number from the new attempt is compared to your average, scaled by how much that number normally varies for you. Those are averaged into one distance score. Below the threshold you're in. This is called scaled Manhattan distance and it's one of the best simple detectors in keystroke dynamics research.</p>
+        <h2>Getting better over time</h2>
+        <p>Every successful login gets added to your profile (up to the last 15), so it keeps up as your typing changes.</p>
+        <h2>Limits</h2>
+        <p>It needs a physical keyboard. Phones don't report key timings properly. It's meant as an extra check on top of the password, not a replacement for it.</p>
+      </div>
+    </section>
+
+    <footer class="foot">Built by Poojitha Yarlagadda</footer>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
