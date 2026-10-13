@@ -172,6 +172,7 @@ def stats():
         threshold=round(user["threshold"], 3),
         owner=[r["distance"] for r in rows if r["label"] == "owner"],
         impostor=[r["distance"] for r in rows if r["label"] == "impostor"],
+        recent=[{"label": r["label"], "distance": r["distance"]} for r in rows[-8:]][::-1],
     )
 
 @app.post("/api/threshold")

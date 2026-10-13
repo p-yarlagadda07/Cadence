@@ -6,9 +6,31 @@ document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => showTab(tab.dataset.tab));
 });
 
+function store(key, value) {
+  try {
+    localStorage.setItem("cadence-" + key, value);
+  } catch {}
+}
+
+function recall(key) {
+  try {
+    return localStorage.getItem("cadence-" + key);
+  } catch {
+    return null;
+  }
+}
+
+function remember(username) {
+  if (!username) return;
+  store("user", username);
+  $("li-user").value = username;
+  $("t-user").value = username;
+}
+
 function showTab(name) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === name));
+  store("tab", name);
   if (name === "test" && $("t-user").value) loadStats();
 }
 
@@ -129,8 +151,7 @@ $("su-create").addEventListener("click", async () => {
   if (!data.ok) return say(msg, data.error, "bad");
   const dropped = su.samples.length - data.kept;
   resetSignup();
-  $("li-user").value = username;
-  $("t-user").value = username;
+  remember(username);
   showTab("login");
   const note = dropped ? ` (ignored ${dropped} odd sample${dropped > 1 ? "s" : ""})` : "";
   say($("li-msg"), `Account created${note}. Now try logging in.`, "good");
@@ -149,11 +170,13 @@ $("li-form").addEventListener("submit", async (e) => {
   liRec.reset();
   const msg = $("li-msg");
   if (!keys) return say(msg, "No corrections allowed. Type it again in one go.", "bad");
-  const data = await post("/api/login", { username: $("li-user").value.trim(), password, keys });
+  const username = $("li-user").value.trim();
+  const data = await post("/api/login", { username, password, keys });
   if (data.reason === "password" || data.error) {
     $("li-result").hidden = true;
     return say(msg, data.error, "bad");
   }
+  remember(username);
   say(msg, "");
   showResult(data);
 });
@@ -200,15 +223,23 @@ $("t-form").addEventListener("submit", async (e) => {
   const data = await post("/api/test", { username, password, keys, label });
   if (!data.ok) return say(msg, data.error, "bad");
   say(msg, "");
-  const who = label === "owner" ? "you" : "impostor";
-  const li = document.createElement("li");
-  li.innerHTML = `<span>${who}</span><span>${data.distance.toFixed(2)}</span><span class="${data.accepted ? "yes" : "no"}">${data.accepted ? "let in" : "blocked"}</span>`;
-  $("t-log").prepend(li);
-  while ($("t-log").children.length > 8) $("t-log").lastChild.remove();
+  remember(username);
   loadStats();
 });
 
-$("t-user").addEventListener("change", loadStats);
+$("t-user").addEventListener("change", () => {
+  remember($("t-user").value.trim());
+  loadStats();
+});
+
+function drawLog() {
+  const t = Number($("s-thr").value);
+  $("t-log").innerHTML = stats.recent.map((r) => {
+    const who = r.label === "owner" ? "you" : "impostor";
+    const inside = r.distance <= t;
+    return `<li><span>${who}</span><span>${r.distance.toFixed(2)}</span><span class="${inside ? "yes" : "no"}">${inside ? "let in" : "blocked"}</span></li>`;
+  }).join("");
+}
 
 async function loadStats() {
   const username = $("t-user").value.trim();
@@ -236,6 +267,7 @@ function updateRates() {
   $("s-imp").textContent = stats.impostor.length;
   $("s-frr").textContent = pct(frr);
   $("s-far").textContent = pct(far);
+  drawLog();
   ratesChart($("chart-rates"), t);
 }
 
@@ -290,7 +322,8 @@ $("s-clear").addEventListener("click", async () => {
 function setupCanvas(canvas) {
   const ratio = window.devicePixelRatio || 1;
   const w = canvas.clientWidth;
-  const h = Number(canvas.getAttribute("height"));
+  if (!canvas.dataset.h) canvas.dataset.h = canvas.getAttribute("height");
+  const h = Number(canvas.dataset.h);
   canvas.width = w * ratio;
   canvas.height = h * ratio;
   canvas.style.height = h + "px";
@@ -409,3 +442,6 @@ function niceStep(raw) {
 window.addEventListener("resize", () => {
   if (stats) updateRates();
 });
+
+remember(recall("user"));
+showTab(recall("tab") || "signup");
