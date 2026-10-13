@@ -49,13 +49,14 @@ async function post(url, body) {
 }
 
 function recorder(input, strip) {
-  const skip = new Set(["Shift", "CapsLock", "Tab", "Enter", "Escape"]);
-  let keys, held, start, spoiled;
+  const skip = new Set(["CapsLock", "Tab", "Enter", "Escape"]);
+  let keys, held, start, spoiled, shift;
   function reset() {
     keys = [];
     held = new Map();
     start = null;
     spoiled = false;
+    shift = null;
     input.value = "";
     draw();
   }
@@ -69,18 +70,28 @@ function recorder(input, strip) {
   }
   input.addEventListener("keydown", (e) => {
     if (e.repeat || skip.has(e.key)) return;
+    const now = performance.now();
+    if (e.key === "Shift") {
+      if (start === null) start = now;
+      shift = { down: now - start, up: null, side: e.code === "ShiftRight" ? 1 : 0 };
+      return;
+    }
     if (e.key.length !== 1 || e.ctrlKey || e.metaKey || e.altKey) {
       spoiled = true;
       return;
     }
-    const now = performance.now();
     if (start === null) start = now;
-    const k = { down: now - start, up: null };
+    const k = { down: now - start, up: null, shift: e.shiftKey && shift ? shift : null };
     keys.push(k);
     held.set(e.code, k);
     draw();
   });
   input.addEventListener("keyup", (e) => {
+    if (e.key === "Shift") {
+      if (shift) shift.up = performance.now() - start;
+      shift = null;
+      return;
+    }
     const k = held.get(e.code);
     if (!k) return;
     k.up = performance.now() - start;
@@ -92,8 +103,12 @@ function recorder(input, strip) {
   reset();
   return {
     take() {
-      const ok = !spoiled && keys.length > 0 && keys.length === input.value.length && keys.every((k) => k.up !== null);
-      return ok ? keys.map((k) => [round(k.down), round(k.up)]) : null;
+      const ok = !spoiled && keys.length > 0 && keys.length === input.value.length &&
+        keys.every((k) => k.up !== null && (!k.shift || k.shift.up !== null));
+      if (!ok) return null;
+      return keys.map((k) => k.shift
+        ? [round(k.down), round(k.up), round(k.shift.down), round(k.shift.up), k.shift.side]
+        : [round(k.down), round(k.up)]);
     },
     reset,
   };
@@ -155,11 +170,29 @@ $("su-create").addEventListener("click", async () => {
   showTab("login");
   const note = dropped ? ` (ignored ${dropped} odd sample${dropped > 1 ? "s" : ""})` : "";
   say($("li-msg"), `Account created${note}. Now try logging in.`, "good");
-  $("li-pass").focus();
+  showCode(data.recovery_code, "Save this recovery code somewhere safe. If your account gets locked after too many failed logins, it's the only way to unlock it straight away. It won't be shown again.");
 });
 
 $("su-reset").addEventListener("click", resetSignup);
 drawDots();
+
+function showCode(code, text) {
+  $("li-notice-text").textContent = text;
+  $("li-code").textContent = code;
+  $("li-notice").hidden = false;
+}
+
+$("li-saved").addEventListener("click", () => {
+  $("li-notice").hidden = true;
+  $("li-pass").focus();
+});
+
+function attemptsNote(data) {
+  if (data.attempts_left === undefined || data.attempts_left === null) return "";
+  if (data.attempts_left === 0) return " The account is now locked for 15 minutes.";
+  const n = data.attempts_left;
+  return ` ${n} attempt${n > 1 ? "s" : ""} left before the account locks.`;
+}
 
 const liRec = recorder($("li-pass"), $("li-strip"));
 
@@ -172,13 +205,24 @@ $("li-form").addEventListener("submit", async (e) => {
   if (!keys) return say(msg, "No corrections allowed. Type it again in one go.", "bad");
   const username = $("li-user").value.trim();
   const data = await post("/api/login", { username, password, keys });
-  if (data.reason === "password" || data.error) {
+  $("li-unlock").hidden = !(data.reason === "locked" || data.attempts_left === 0);
+  if (data.reason === "locked" || data.reason === "password" || data.error) {
     $("li-result").hidden = true;
-    return say(msg, data.error, "bad");
+    return say(msg, data.error + attemptsNote(data), "bad");
   }
   remember(username);
-  say(msg, "");
+  say(msg, attemptsNote(data).trim(), "bad");
   showResult(data);
+});
+
+$("li-unlock-btn").addEventListener("click", async () => {
+  const msg = $("li-msg");
+  const data = await post("/api/unlock", { username: $("li-user").value.trim(), code: $("li-code-input").value });
+  if (!data.ok) return say(msg, data.error, "bad");
+  $("li-code-input").value = "";
+  $("li-unlock").hidden = true;
+  say(msg, "Account unlocked. Try logging in again.", "good");
+  showCode(data.recovery_code, "Your old recovery code won't work any more. Save this new one instead.");
 });
 
 function showResult(data) {

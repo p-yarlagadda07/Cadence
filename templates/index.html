@@ -47,6 +47,12 @@
     </section>
 
     <section class="panel" id="login">
+      <div class="card notice" id="li-notice" hidden>
+        <p id="li-notice-text"></p>
+        <p class="code mono" id="li-code"></p>
+        <button class="btn ghost" id="li-saved" type="button">I've saved it</button>
+      </div>
+
       <div class="card">
         <label class="field">
           <span>Username</span>
@@ -58,6 +64,10 @@
           <div class="strip" id="li-strip"></div>
         </form>
         <p class="msg" id="li-msg"></p>
+        <div class="row" id="li-unlock" hidden>
+          <input id="li-code-input" type="text" placeholder="recovery code" autocomplete="off" spellcheck="false">
+          <button id="li-unlock-btn" class="btn" type="button">Unlock</button>
+        </div>
       </div>
 
       <div class="card result" id="li-result" hidden>
@@ -134,13 +144,17 @@
         <h2>The idea</h2>
         <p>Everyone types their password with their own rhythm. Some people hold keys longer, some roll quickly through letters they type a lot, some pause before the numbers. That rhythm is surprisingly hard to copy, even if you know the password.</p>
         <h2>What gets measured</h2>
-        <p>For every key: how long it's held down. Between every pair of keys: the time from one press to the next, and from one release to the next press. A 10 character password gives 28 numbers per attempt.</p>
+        <p>For every key: how long it's held down. Between every pair of keys: the time from one press to the next. A 10 character password gives 19 numbers per attempt.</p>
+        <h2>The Shift key</h2>
+        <p>For capitals and symbols, it also measures how early you press Shift before the letter, how long you keep holding it after, and whether you use the left or right Shift. People are surprisingly consistent about this, and it's very different from person to person.</p>
         <h2>Signing up</h2>
         <p>You type the password 8 times. The app works out your average for each of those numbers and how much it usually varies. If one sample is way off (you got distracted, a typo you pushed through) it's thrown out.</p>
         <h2>Logging in</h2>
         <p>Each number from the new attempt is compared to your average, scaled by how much that number normally varies for you. Those are averaged into one distance score. Below the threshold you're in. This is called scaled Manhattan distance and it's one of the best simple detectors in keystroke dynamics research.</p>
         <h2>Speed check</h2>
         <p>The app also remembers how long you usually take to type the whole password. Someone who copies your pattern but types it a lot faster or slower than you ever do gets blocked, even if their rhythm score looks fine.</p>
+        <h2>Lockout</h2>
+        <p>After {{ max_fails }} failed logins in a row, whether it's a wrong password or the wrong rhythm, the account locks for 15 minutes. That stops someone from just retrying until they get lucky. You get a recovery code when you sign up, and it unlocks the account straight away.</p>
         <h2>Getting better over time</h2>
         <p>Every successful login gets added to your profile (up to the last 15), so it keeps up as your typing changes.</p>
         <h2>Limits</h2>

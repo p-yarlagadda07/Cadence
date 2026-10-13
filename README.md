@@ -16,11 +16,12 @@ You need Python 3.10 or newer.
 
 ```
 pip install -r requirements.txt
-python app.py
+python -m flask --app app run --port 5001
 ```
 
-Then open http://localhost:5000. Use a laptop or desktop keyboard; phones don't
-report key timings properly.
+Then open http://localhost:5001. On a Mac, port 5000 is taken by AirPlay, which
+is why this uses 5001. Use a laptop or desktop keyboard; phones don't report key
+timings properly.
 
 ## How it works
 
@@ -29,13 +30,22 @@ down and comes back up (`static/app.js`). Corrections aren't allowed, so
 backspace, arrow keys or pasting throw the sample away, because a password
 you fixed halfway through doesn't have your normal rhythm.
 
-**Features.** For a password of n characters we get 3n - 2 numbers
+**Features.** For a password of n characters we get 2n - 1 numbers
 (`rhythm.py`):
 
 - hold time for each key
 - time from pressing one key to pressing the next
-- time from releasing one key to pressing the next (this can go negative when
-  you press the next key before letting go of the last one)
+
+The first version also used the time from releasing one key to pressing the
+next. I dropped it because it's just the second one minus the hold time, so it
+was counting the same information twice and giving some keys too much weight.
+
+**Shift key.** For every capital or symbol, three more things get recorded: how
+long before the letter you pressed Shift, how long after the letter you let go
+of it, and whether you used left or right Shift. Most people are very
+consistent about this and it varies a lot between people, so passwords with
+capitals and symbols are much harder to fake. Using the other Shift key, or
+Caps Lock instead of Shift, adds a fixed penalty to the score.
 
 **Signing up.** You type the password 8 times. For each feature we store the
 average and how much it usually varies (mean absolute deviation). If one sample
@@ -62,6 +72,13 @@ little, so the overall score can still pass. To catch that, the profile also
 stores how long you usually take to type the whole password and how much that
 varies. An attempt far outside your normal time is rejected no matter what the
 rhythm score says.
+
+**Lockout.** After 5 failed logins in a row (wrong password or wrong rhythm)
+the account locks for 15 minutes. Without this, someone who knows your
+password could keep trying until one attempt happens to land close enough.
+When you sign up you get a recovery code, shown once, which unlocks the account
+straight away. Using it gives you a new one, so each code only works once. It's
+stored hashed, like the password.
 
 **Adapting.** Every successful login gets added to your profile (the last 15
 are kept), so it keeps up if your typing slowly changes.
@@ -97,7 +114,10 @@ run. Passwords are stored hashed (werkzeug), never in plain text.
 - This is a demo. The login screen tells you whether it was the password or
   the rhythm that failed, which a real system shouldn't do since it helps an
   attacker.
-- No rate limiting or sessions. A real version would need both.
+- No sessions. Logging in shows the result but doesn't keep you signed in.
+- The Test page doesn't count towards the lockout and shows whether each
+  attempt would pass, so someone could practise on it. It's there for tuning
+  and would be removed in a real deployment.
 - Your rhythm can change with a different keyboard, an injury, or being half
   asleep, so this works best as an extra check alongside the password, not a
   replacement for it.

@@ -28,6 +28,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -190,6 +191,10 @@ canvas { width: 100%; display: block; }
 .sw.now { background: var(--now); }
 .sw.frr { background: var(--accent); }
 .sw.far { background: var(--now); }
+
+.notice { border-color: var(--accent); }
+.notice p { margin-top: 0; }
+.code { font-size: 24px; font-weight: 600; letter-spacing: 0.08em; color: var(--accent); margin: 6px 0 14px; }
 
 .lead { margin-top: 0; }
 .who { display: flex; gap: 18px; margin-bottom: 14px; }
