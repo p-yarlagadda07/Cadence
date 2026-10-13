@@ -168,10 +168,12 @@ attempts through. Using the Test page to tune it down to 1.90:
 | Me (FRR) | 15 | 0 blocked, 0% |
 | Impostors (FAR) | 17 | 2 let in, 12% |
 
-Most of the impostor attempts that got blocked were caught by the speed check,
-not the rhythm score.
-
 ![Live site results after tuning the threshold](screenshots/live-results.png)
+
+Most of the impostor attempts that got blocked were caught by the speed check,
+not the rhythm score:
+
+![Impostor attempts on the live site](screenshots/live-attempts.png)
 
 **How it got there.**
 
