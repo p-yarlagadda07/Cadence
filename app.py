@@ -41,6 +41,9 @@ def init_db():
                 created_at TEXT DEFAULT CURRENT_TIMESTAMP
             );
         """)
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(attempts)")]
+        if "tempo_ok" not in columns:
+            conn.execute("ALTER TABLE attempts ADD COLUMN tempo_ok INTEGER NOT NULL DEFAULT 1")
 
 def fail(message, status=400, **extra):
     return jsonify(ok=False, error=message, **extra), status
@@ -83,12 +86,16 @@ def check_attempt(user, password, keys):
     profile = rhythm.build_profile(samples)
     attempt = rhythm.features(keys)
     dist = rhythm.distance(profile, attempt)
+    speed_ok = rhythm.tempo_ok(profile, keys)
     return {
         "keys": keys,
         "samples": samples,
         "distance": round(dist, 3),
         "threshold": round(user["threshold"], 3),
-        "accepted": dist <= user["threshold"],
+        "speed_ok": speed_ok,
+        "tempo": round(rhythm.tempo(keys)),
+        "usual_tempo": round(profile["tempo"]),
+        "accepted": speed_ok and dist <= user["threshold"],
         "profile": profile,
         "attempt": attempt,
         "length": len(password),
@@ -132,11 +139,19 @@ def login():
         samples = (result["samples"] + [result["keys"]])[-MAX_SAMPLES:]
         db().execute("UPDATE users SET samples = ? WHERE username = ?", (json.dumps(samples), username))
         db().commit()
+    if result["accepted"]:
+        reason = None
+    elif not result["speed_ok"]:
+        reason = "speed"
+    else:
+        reason = "rhythm"
     return jsonify(
         ok=result["accepted"],
-        reason=None if result["accepted"] else "rhythm",
+        reason=reason,
         distance=result["distance"],
         threshold=result["threshold"],
+        tempo=result["tempo"],
+        usual_tempo=result["usual_tempo"],
         profile=result["profile"],
         attempt=result["attempt"],
         length=result["length"],
@@ -152,8 +167,8 @@ def test_attempt():
     if error:
         return error
     db().execute(
-        "INSERT INTO attempts (username, label, distance) VALUES (?, ?, ?)",
-        (username, label, result["distance"]),
+        "INSERT INTO attempts (username, label, distance, tempo_ok) VALUES (?, ?, ?, ?)",
+        (username, label, result["distance"], int(result["speed_ok"])),
     )
     db().commit()
     return jsonify(ok=True, accepted=result["accepted"], distance=result["distance"])
@@ -165,14 +180,15 @@ def stats():
     if user is None:
         return fail("No such user.", 404)
     rows = db().execute(
-        "SELECT label, distance FROM attempts WHERE username = ? ORDER BY id", (username,)
+        "SELECT label, distance, tempo_ok FROM attempts WHERE username = ? ORDER BY id", (username,)
     ).fetchall()
+    score = lambda r: r["distance"] if r["tempo_ok"] else None
     return jsonify(
         ok=True,
         threshold=round(user["threshold"], 3),
-        owner=[r["distance"] for r in rows if r["label"] == "owner"],
-        impostor=[r["distance"] for r in rows if r["label"] == "impostor"],
-        recent=[{"label": r["label"], "distance": r["distance"]} for r in rows[-8:]][::-1],
+        owner=[score(r) for r in rows if r["label"] == "owner"],
+        impostor=[score(r) for r in rows if r["label"] == "impostor"],
+        recent=[{"label": r["label"], "distance": r["distance"], "speed_ok": bool(r["tempo_ok"])} for r in rows[-8:]][::-1],
     )
 
 @app.post("/api/threshold")

@@ -56,6 +56,13 @@ I went with this method because Killourhy and Maxion (2009) compared 14
 keystroke detectors on the same dataset and scaled Manhattan came out on top,
 while being simple enough to explain in a few lines.
 
+**Speed check.** Averaging every timing together has a weak spot. If someone
+types with a similar pattern but noticeably faster, each gap only moves a
+little, so the overall score can still pass. To catch that, the profile also
+stores how long you usually take to type the whole password and how much that
+varies. An attempt far outside your normal time is rejected no matter what the
+rhythm score says.
+
 **Adapting.** Every successful login gets added to your profile (the last 15
 are kept), so it keeps up if your typing slowly changes.
 

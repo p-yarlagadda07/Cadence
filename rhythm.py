@@ -1,6 +1,11 @@
 import statistics
 
 MIN_SPREAD = 8.0
+MIN_TEMPO_SPREAD = 0.04
+TEMPO_LIMIT = 2.5
+
+def tempo(sample):
+    return sample[-1][1] - sample[0][0]
 
 def features(sample):
     hold = [up - down for down, up in sample]
@@ -12,7 +17,13 @@ def build_profile(samples):
     columns = list(zip(*(features(s) for s in samples)))
     mean = [statistics.fmean(col) for col in columns]
     spread = [max(statistics.fmean(abs(x - m) for x in col), MIN_SPREAD) for col, m in zip(columns, mean)]
-    return {"mean": mean, "spread": spread}
+    times = [tempo(s) for s in samples]
+    usual = statistics.fmean(times)
+    tempo_spread = max(statistics.fmean(abs(t - usual) for t in times), usual * MIN_TEMPO_SPREAD)
+    return {"mean": mean, "spread": spread, "tempo": usual, "tempo_spread": tempo_spread}
+
+def tempo_ok(profile, sample):
+    return abs(tempo(sample) - profile["tempo"]) <= TEMPO_LIMIT * profile["tempo_spread"]
 
 def distance(profile, vector):
     return statistics.fmean(abs(x - m) / s for x, m, s in zip(vector, profile["mean"], profile["spread"]))

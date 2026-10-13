@@ -184,13 +184,22 @@ $("li-form").addEventListener("submit", async (e) => {
 function showResult(data) {
   $("li-result").hidden = false;
   const verdict = $("li-verdict");
-  verdict.textContent = data.ok ? "Welcome back. That's you." : "Right password, wrong rhythm.";
+  const took = (data.tempo / 1000).toFixed(2);
+  const usual = (data.usual_tempo / 1000).toFixed(2);
+  if (data.ok) {
+    verdict.textContent = "Welcome back. That's you.";
+  } else if (data.reason === "speed") {
+    const way = data.tempo < data.usual_tempo ? "faster" : "slower";
+    verdict.textContent = `Right password, but much ${way} than you type.`;
+  } else {
+    verdict.textContent = "Right password, wrong rhythm.";
+  }
   verdict.className = "verdict " + (data.ok ? "good" : "bad");
   const match = Math.max(0, Math.min(100, 100 - (data.distance / data.threshold) * 50));
   $("li-fill").style.width = match + "%";
   $("li-fill").style.background = data.ok ? "var(--good)" : "var(--bad)";
   $("li-numbers").textContent =
-    `match ${match.toFixed(0)}%  ·  distance ${data.distance.toFixed(2)}  ·  threshold ${data.threshold.toFixed(2)}`;
+    `match ${match.toFixed(0)}%  ·  distance ${data.distance.toFixed(2)}  ·  threshold ${data.threshold.toFixed(2)}  ·  took ${took}s (you usually take ${usual}s)`;
   const n = data.length;
   const p = data.profile;
   lineChart($("chart-hold"), {
@@ -236,8 +245,9 @@ function drawLog() {
   const t = Number($("s-thr").value);
   $("t-log").innerHTML = stats.recent.map((r) => {
     const who = r.label === "owner" ? "you" : "impostor";
-    const inside = r.distance <= t;
-    return `<li><span>${who}</span><span>${r.distance.toFixed(2)}</span><span class="${inside ? "yes" : "no"}">${inside ? "let in" : "blocked"}</span></li>`;
+    const inside = r.speed_ok && r.distance <= t;
+    const verdict = inside ? "let in" : r.speed_ok ? "blocked" : "blocked (speed)";
+    return `<li><span>${who}</span><span>${r.distance.toFixed(2)}</span><span class="${inside ? "yes" : "no"}">${verdict}</span></li>`;
   }).join("");
 }
 
@@ -253,8 +263,8 @@ async function loadStats() {
 }
 
 function rates(t) {
-  const frr = stats.owner.length ? stats.owner.filter((d) => d > t).length / stats.owner.length : null;
-  const far = stats.impostor.length ? stats.impostor.filter((d) => d <= t).length / stats.impostor.length : null;
+  const frr = stats.owner.length ? stats.owner.filter((d) => d === null || d > t).length / stats.owner.length : null;
+  const far = stats.impostor.length ? stats.impostor.filter((d) => d !== null && d <= t).length / stats.impostor.length : null;
   return { frr, far };
 }
 
