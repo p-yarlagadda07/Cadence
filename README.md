@@ -73,7 +73,8 @@ If the password is right and the distance is under your threshold, you're in.
 Dividing by your usual variation matters, because a gap you're always
 consistent on should count more than one that's all over the place.
 
-I went with this method because Killourhy and Maxion (2009) compared 14
+I went with this method because
+[Killourhy and Maxion (2009)](https://www.cs.cmu.edu/~keystroke/) compared 14
 keystroke detectors on the same dataset and scaled Manhattan came out on top,
 while being simple enough to explain in a few lines.
 
@@ -127,6 +128,13 @@ At a threshold of 1.95:
 | Impostors (FAR) | 20 | 2 let in, 10% |
 
 The two error rates cross at about 10%, which is the equal error rate.
+
+![FRR and FAR across every threshold](screenshots/chart.png)
+
+Impostor attempts on the Test page. Most score well above my usual range, and
+one was caught by the speed check:
+
+![Impostor attempts getting blocked](screenshots/attempts.png)
 
 **How it got there.**
 
