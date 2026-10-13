@@ -10,7 +10,11 @@ with a different rhythm, they don't get in.
 
 This is called keystroke dynamics, a type of behavioural biometrics.
 
+**Live demo:** https://pyarlagadda07.pythonanywhere.com
+
 Built by Poojitha Yarlagadda ([@p-yarlagadda07](https://github.com/p-yarlagadda07)).
+
+![Logging in on the live site](screenshots/login.png)
 
 ## Why I built it
 
@@ -117,6 +121,11 @@ middle of the range with the fewest mistakes.
 
 ## Results
 
+I tested it twice: once on my laptop, then again on the live site after fixing
+how the speed check works.
+
+### Round 1: on my laptop
+
 **Setup.** One account, mine, with a 9 character password: 1 capital letter,
 1 special character and 2 numbers. I type capitals and symbols with the right
 Shift key, on my laptop keyboard. After signing up I logged in normally a few
@@ -143,6 +152,27 @@ one was caught by the speed check:
 
 ![Impostor attempts getting blocked](screenshots/attempts.png)
 
+### Round 2: on the live site
+
+After deploying, I made a fresh account on the live site with the same kind of
+password. At first a lot of my own logins got blocked for speed, because I had
+typed slowly while signing up and the app took that as my normal pace. After
+changing the speed check to use my recent logins instead, I did 15 attempts as
+myself, and four other people made 17 attempts with my password.
+
+The threshold the app picked at sign up was 2.60, which let 29% of impostor
+attempts through. Using the Test page to tune it down to 1.90:
+
+| | Attempts | Result |
+|---|---|---|
+| Me (FRR) | 15 | 0 blocked, 0% |
+| Impostors (FAR) | 17 | 2 let in, 12% |
+
+Most of the impostor attempts that got blocked were caught by the speed check,
+not the rhythm score.
+
+![Live site results after tuning the threshold](screenshots/live-results.png)
+
 **How it got there.**
 
 - The first version, without the Shift key or the speed check, had an equal
@@ -154,6 +184,11 @@ one was caught by the speed check:
   attempts usually land between 0.8 and 1.5.
 - The first speed check was too strict and blocked me whenever I typed a bit
   faster than usual, so I loosened it after testing.
+- On the live site, the speed check judged me against my careful sign up
+  typing. Basing it on my last 8 successful logins fixed that without making it
+  easier for anyone else to get in.
+- The automatic threshold from sign up is a starting point, not the final
+  answer. Tuning it with real attempts from other people mattered a lot.
 
 **What surprised me.**
 
@@ -166,7 +201,7 @@ one was caught by the speed check:
 - My own typing varies more than I expected. Some days I'm just faster, which
   is why the speed check had to be loosened.
 
-This is a small test with a handful of people, so the exact numbers would
+These are small tests with a handful of people, so the exact numbers would
 change with more testers. A proper evaluation would use a public dataset like
 the CMU keystroke benchmark.
 
