@@ -1,14 +1,25 @@
-# cadence
+# Cadence
 
 A login system that checks how you type your password, not just what you type.
 
-Everyone has their own typing rhythm. How long you hold each key, how fast you
-move between certain letters, where you pause. Cadence learns that rhythm when
-you sign up, and on every login it checks both the password and the rhythm. If
-someone else types your password correctly but with a different rhythm, they
-don't get in.
+Everyone has their own typing rhythm. How long you hold each key, how quickly
+you move between certain letters, where you pause, how you use the Shift key.
+Cadence learns that rhythm when you sign up, and on every login it checks both
+the password and the rhythm. If someone else types your password correctly but
+with a different rhythm, they don't get in.
 
-This is called keystroke dynamics, which is a type of behavioural biometrics.
+This is called keystroke dynamics, a type of behavioural biometrics.
+
+Built by Poojitha Yarlagadda ([@p-yarlagadda07](https://github.com/p-yarlagadda07)).
+
+## Why I built it
+
+I've been getting into cybersecurity, and most of what we do in college is
+development, so I wanted a project that was actually about security. I also
+wanted to understand behavioural biometrics properly, not just read about them.
+The question that got me started was simple: if someone steals your password,
+is there anything left that still proves it's you? It turns out the way you
+type it is surprisingly hard to copy.
 
 ## Running it
 
@@ -96,6 +107,54 @@ Making it stricter lowers FAR but raises FRR, and the other way round. The
 chart shows both across every threshold, and "Use best threshold" picks the
 middle of the range with the fewest mistakes.
 
+## Results
+
+**Setup.** One account, mine, with a 9 character password: 1 capital letter,
+1 special character and 2 numbers. I type capitals and symbols with the right
+Shift key, on my laptop keyboard. After signing up I logged in normally a few
+times so the profile could settle, then did 11 attempts as myself.
+
+Four friends then tried my password, 4 to 5 attempts each, 20 attempts in
+total. Two of them practised it a few times before their recorded attempts and
+two went in cold. One friend also watched me type it first and tried to copy
+my rhythm.
+
+At a threshold of 1.95:
+
+| | Attempts | Result |
+|---|---|---|
+| Me (FRR) | 11 | 1 blocked, 9% |
+| Impostors (FAR) | 20 | 2 let in, 10% |
+
+The two error rates cross at about 10%, which is the equal error rate.
+
+**How it got there.**
+
+- The first version, without the Shift key or the speed check, had an equal
+  error rate of about 29%. Some impostors were typing the same pattern as me,
+  just faster, and the averaged score couldn't tell the difference.
+- Adding the speed check stopped impostors who type at a very different pace.
+- Recording Shift timing helped the most. In one test, an attempt with the same
+  letter rhythm as me but a different Shift habit scored 2.68, while my own
+  attempts usually land between 0.8 and 1.5.
+- The first speed check was too strict and blocked me whenever I typed a bit
+  faster than usual, so I loosened it after testing.
+
+**What surprised me.**
+
+- Watching someone type really does help copy them. One of the two impostor
+  attempts that got in was from the friend who watched me first. Shoulder
+  surfing isn't just about seeing the password.
+- Short or common passwords are almost useless for this. When I tested with a
+  plain English word, everyone typed it in the same quick burst and the system
+  couldn't separate people at all. Capitals and symbols made a huge difference.
+- My own typing varies more than I expected. Some days I'm just faster, which
+  is why the speed check had to be loosened.
+
+This is a small test with a handful of people, so the exact numbers would
+change with more testers. A proper evaluation would use a public dataset like
+the CMU keystroke benchmark.
+
 ## Project structure
 
 ```
@@ -107,7 +166,8 @@ static/style.css     styles
 ```
 
 Data goes into a local SQLite file, `cadence.db`, which gets created on first
-run. Passwords are stored hashed (werkzeug), never in plain text.
+run. Passwords and recovery codes are stored hashed (werkzeug), never in plain
+text.
 
 ## Limitations
 
@@ -126,6 +186,7 @@ run. Passwords are stored hashed (werkzeug), never in plain text.
 
 ## Ideas for later
 
-- Try other detectors (Mahalanobis distance, one-class SVM) and compare FAR/FRR
+- Try other detectors (nearest neighbour, Mahalanobis distance, one-class SVM)
+  and compare FAR/FRR
 - Test on the public CMU keystroke dataset to get numbers from 51 typists
 - Learn typing rhythm on free text, not just a fixed password
