@@ -1,8 +1,8 @@
 import statistics
 
 MIN_SPREAD = 8.0
-MIN_TEMPO_SPREAD = 0.04
-TEMPO_LIMIT = 2.5
+MIN_TEMPO_SPREAD = 0.05
+TEMPO_LIMIT = 3
 SHIFT_PENALTY = 4.0
 
 def tempo(sample):
