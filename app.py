@@ -102,6 +102,9 @@ def clean_keys(keys, length):
         return None
     return out
 
+def score_of(row):
+    return row["distance"] if row["tempo_ok"] else None
+
 def get_user(username):
     return db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
 
@@ -254,12 +257,11 @@ def stats():
     rows = db().execute(
         "SELECT label, distance, tempo_ok FROM attempts WHERE username = ? ORDER BY id", (username,)
     ).fetchall()
-    score = lambda r: r["distance"] if r["tempo_ok"] else None
     return jsonify(
         ok=True,
         threshold=round(user["threshold"], 3),
-        owner=[score(r) for r in rows if r["label"] == "owner"],
-        impostor=[score(r) for r in rows if r["label"] == "impostor"],
+        owner=[score_of(r) for r in rows if r["label"] == "owner"],
+        impostor=[score_of(r) for r in rows if r["label"] == "impostor"],
         recent=[{"label": r["label"], "distance": r["distance"], "speed_ok": bool(r["tempo_ok"])} for r in rows[-8:]][::-1],
     )
 
