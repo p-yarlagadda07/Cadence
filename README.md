@@ -85,6 +85,13 @@ stores how long you usually take to type the whole password and how much that
 varies. An attempt far outside your normal time is rejected no matter what the
 rhythm score says.
 
+The usual time comes from your last 8 successful logins, not from sign up. I
+found that out the hard way: people type slowly and carefully while signing
+up, then type normally afterwards, so the app kept thinking I was "too fast".
+New accounts also get some extra speed leniency until they have 12 samples.
+Blocked logins never update the profile, otherwise someone could slowly train
+your account to accept them.
+
 **Lockout.** After 5 failed logins in a row (wrong password or wrong rhythm)
 the account locks for 15 minutes. Without this, someone who knows your
 password could keep trying until one attempt happens to land close enough.
