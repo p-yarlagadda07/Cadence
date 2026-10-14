@@ -89,9 +89,11 @@ stores how long you usually take to type the whole password and how much that
 varies. An attempt far outside your normal time is rejected no matter what the
 rhythm score says.
 
-The usual time comes from your last 8 successful logins, not from sign up. I
-found that out the hard way: people type slowly and carefully while signing
-up, then type normally afterwards, so the app kept thinking I was "too fast".
+The usual time comes from your saved samples, which are mostly your recent
+successful logins, not just sign up. I found that out the hard way: people type
+slowly and carefully while signing up, then type normally afterwards, so the
+app kept thinking I was "too fast". Your pace also changes from day to day, so
+the check allows anything within about a third of your usual time either way.
 New accounts also get some extra speed leniency until they have 12 samples.
 Blocked logins never update the profile, otherwise someone could slowly train
 your account to accept them.
@@ -187,8 +189,9 @@ not the rhythm score:
 - The first speed check was too strict and blocked me whenever I typed a bit
   faster than usual, so I loosened it after testing.
 - On the live site, the speed check judged me against my careful sign up
-  typing. Basing it on my last 8 successful logins fixed that without making it
-  easier for anyone else to get in.
+  typing. Basing it on my recent logins fixed that, but the next day I got
+  blocked again because I was typing at a different pace than the night before.
+  Widening the allowed range fixed it without letting more strangers in.
 - The automatic threshold from sign up is a starting point, not the final
   answer. Tuning it with real attempts from other people mattered a lot.
 
