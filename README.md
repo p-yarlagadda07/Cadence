@@ -123,8 +123,9 @@ middle of the range with the fewest mistakes.
 
 ## Results
 
-I tested it twice: once on my laptop, then again on the live site after fixing
-how the speed check works.
+I tested it three times: once on my laptop, then twice on the live site as I
+fixed problems the earlier rounds showed up. The latest round got both error
+rates down to 7%.
 
 ### Round 1: on my laptop
 
@@ -176,6 +177,32 @@ Most of the impostor attempts that got blocked were caught by the speed check,
 not the rhythm score:
 
 ![Impostor attempts on the live site](screenshots/live-attempts.png)
+
+### Round 3: on the live site, a day later
+
+The next day my own logins started getting blocked for speed again, even with
+good rhythm scores. I checked the profile on the server and found the problem:
+it only allowed about 21% difference from my usual time, and my pace that day
+was different from the night before. After widening the allowed range and
+judging speed across all my saved logins, I cleared the test data and started
+again. I did 14 attempts as myself, and two other people made 14 attempts with
+my password.
+
+Using "Use best threshold", which picked 1.65:
+
+| | Attempts | Result |
+|---|---|---|
+| Me (FRR) | 14 | 1 blocked, 7% |
+| Impostors (FAR) | 14 | 1 let in, 7% |
+
+The two lines cross at about 7%, the lowest equal error rate so far.
+
+![Round 3 results](screenshots/round3-results.png)
+
+Most impostor attempts were well above my usual range, and the speed check
+caught the ones that were furthest off:
+
+![Round 3 impostor attempts](screenshots/round3-attempts.png)
 
 **How it got there.**
 
