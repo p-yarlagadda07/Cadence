@@ -3,4 +3,5 @@ __pycache__/
 .venv/
 venv/
 cadence.db
+benchmark/data/
 .pytest_cache/
