@@ -38,11 +38,11 @@ browser sends, so the benchmark runs the real `build_profile`, `distance` and
 | Detector | Trained on | EER | Std dev |
 | --- | --- | --- | --- |
 | Paper's scaled Manhattan (my reproduction) | first 200 typings | 9.6% | 6.9% |
-| Cadence rhythm score | first 200 typings | 9.2% | 7.1% |
-| Cadence rhythm + speed check | first 200 typings | 9.4% | 7.4% |
+| Cadence rhythm score | first 200 typings | 9.1% | 8.1% |
+| Cadence rhythm + speed check | first 200 typings | 9.1% | 7.9% |
 | Paper's scaled Manhattan | 8 familiar typings | 8.4% | 4.5% |
-| Cadence rhythm + speed check | 8 familiar typings | **7.9%** | 4.4% |
-| Cadence rhythm + speed check | first 15 typings | 30.0% | 20.5% |
+| Cadence rhythm + speed check | 8 familiar typings | **5.7%** | 4.5% |
+| Cadence rhythm + speed check | first 15 typings | 31.0% | 20.8% |
 
 The first row matches the paper's published 9.62% ± 6.94%, which is how I
 know the evaluation itself is right.
@@ -53,19 +53,48 @@ up for Cadence, since people sign up with a password they already know.
 
 What I took from this:
 
-- **Cadence's rhythm score beats the paper's version** in every setting. The
-  main difference is that Cadence leaves out the release-to-press times, which
-  only repeat information already in the other two measurements.
-- **8 familiar typings are enough.** Training on them gives 7.9%, better than
+- **Cadence's rhythm score beats the paper's version** in every setting. Two
+  things make the difference: Cadence leaves out the release-to-press times,
+  which only repeat information already in the other measurements, and it
+  ignores the 2 keys that are furthest off in each attempt (see below).
+- **8 familiar typings are enough.** Training on them gives 5.7%, better than
   training on 200 typings that include someone still learning the password.
-  It also lines up with the roughly 7% I measured with real people.
 - **Signing up with a password you don't know yet is a bad idea.** Trained on
-  someone's first 15 attempts, the error rate jumps to 30%, because their
+  someone's first 15 attempts, the error rate jumps to 31%, because their
   rhythm keeps changing as they learn it.
-- **The speed check doesn't help here.** It costs a few tenths of a percent.
-  The impostors in this dataset are just other people typing normally, and the
-  rhythm score already catches them. The speed check is there for people
-  copying your rhythm at a different pace, and this dataset has none of those.
+- **The speed check doesn't help here.** On 8 familiar typings it costs about
+  half a percent (5.7% with it, 5.2% without). The impostors in this dataset
+  are just other people typing normally, and the rhythm score already catches
+  them. The speed check is there for people copying your rhythm at a different
+  pace, and this dataset has none of those.
 
 The Shift timing in Cadence isn't tested here, because the dataset records
 Shift and R as a single key.
+
+## Forgiving one slip
+
+The first version of this benchmark gave Cadence 7.9%. Looking at where it
+went wrong, most of the genuine attempts it rejected were close on almost every
+key but had one or two keys way off, usually a hesitation. Averaging every key
+meant one slow key could sink the whole attempt.
+
+So the score now leaves out the 2 timings that are furthest from your usual,
+and averages the rest. I tested how many to leave out on half the typists and
+checked it on the other half, so it isn't just tuned to this data:
+
+| Keys left out | First 25 typists | Other 26 typists |
+| --- | --- | --- |
+| 0 | 7.8% | 7.7% |
+| 1 | 5.6% | 5.6% |
+| 2 | 5.3% | 5.5% |
+| 3 | 5.5% | 5.8% |
+| 4 | 6.0% | 6.3% |
+
+Both halves agree that 2 is best. It brought the result from 7.9% to 5.7%, and
+at the threshold the app picks on its own, the real user gets in 76% of the
+time instead of 64%. Shift key checks are never left out, since those are
+the hardest part to copy.
+
+The one place it does slightly worse is someone still learning their password
+(30.0% to 31.0%), which is why the sign up page asks for a password you
+already type often.
