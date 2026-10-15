@@ -123,7 +123,13 @@ your account to accept them.
 **Lockout.** After 5 failed logins in a row (wrong password or wrong rhythm)
 the account locks for 15 minutes. Without this, someone who knows your
 password could keep trying until one attempt happens to land close enough.
-When you sign up you get a recovery code, shown once, which unlocks the account
+The lock only applies to the network the failures came from. Otherwise anyone
+who knew your username could keep you locked out just by typing rubbish, and
+you'd still get in from home. On top of that, one network can only rack up 40
+failed logins an hour across all accounts, so nobody can work through a list of
+usernames. Usernames that don't exist fail in exactly the same way, with the
+same message and the same delay, so the login can't be used to check who has
+an account. When you sign up you get a recovery code, shown once, which unlocks the account
 straight away. Using it gives you a new one, so each code only works once. It's
 stored hashed, like the password.
 
@@ -167,8 +173,9 @@ marked as "Someone else". It shows two numbers:
 You can also let people test from their own devices. On the Test page, pick
 how long to open your account for (30 minutes up to a week) and add an
 optional note, for example the password if it's a throwaway test account.
-While it's open, anyone who visits sees "Can you log in as you?" and can try,
-but they only ever see "Let in" or "Blocked". Each person gets 15 tries per
+While it's open, anyone who visits sees "Can you get into this account?" and
+can try, but they only ever see "Let in" or "Blocked". They never see the
+username, not even in the page source. Each person gets 15 tries per
 round, so it can't be used to practise until something works, and there's a
 looser cap per network as a backstop. Their attempts land in your stats as
 someone else. Public tries never lock your account or create security alerts,
@@ -342,6 +349,11 @@ Data goes into a local SQLite file, `cadence.db`, which gets created on first
 run. Passwords and recovery codes are stored hashed (werkzeug), never in plain
 text.
 
+A few smaller things: one network can create at most 20 accounts an hour,
+requests over 64 KB are refused, and every page tells the browser not to load
+it inside someone else's frame, so another site can't overlay it and record
+what you type.
+
 ## Limitations
 
 - This is a demo. Logging in starts a session, but there's no app behind the
@@ -352,6 +364,10 @@ text.
 - Your rhythm can change with a different keyboard, an injury, or being half
   asleep, so this works best as an extra check alongside the password, not a
   replacement for it.
+- Sign up still says when a username is taken, like almost every site. The
+  sign-up limit keeps anyone from checking names in bulk.
+- Limits go by IP address, so a lot of people behind the same college Wi-Fi
+  share them, and someone with many IP addresses could spread out their tries.
 - Someone who records your typing (screen recording, a keylogger) could in
   theory replay your timings.
 

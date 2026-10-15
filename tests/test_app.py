@@ -8,9 +8,11 @@ from conftest import PASSWORD, typing
 OTHER = dict(holds=[160, 60, 70, 150, 140, 60, 70, 140, 60], gaps=[120, 260, 110, 230, 130, 240, 120, 250])
 
 
-def login(client, keys=None, password=PASSWORD, username="poojitha"):
+def login(client, keys=None, password=PASSWORD, username="poojitha", ip=None):
     keys = keys if keys is not None else typing(seed=100)
-    return client.post("/api/login", json={"username": username, "password": password, "keys": keys})
+    headers = {"X-Real-IP": ip} if ip else {}
+    return client.post("/api/login", json={"username": username, "password": password, "keys": keys},
+                       headers=headers)
 
 
 def try_test_page(client, label="owner", seed=1, **kw):
@@ -102,6 +104,49 @@ def test_five_failures_lock_the_account(client, account):
     res = login(client)
     assert res.status_code == 423
     assert res.get_json()["reason"] == "locked"
+
+
+def test_someone_else_cant_lock_the_owner_out(client, account):
+    for _ in range(5):
+        login(client, password="wrongpass", ip="10.0.0.9")
+    assert login(client, ip="10.0.0.9").status_code == 423
+    assert login(client, ip="10.0.0.1").get_json()["ok"]
+
+
+def test_unknown_usernames_fail_the_same_way(client, account):
+    real = login(client, password="wrongpass").get_json()
+    fake = login(client, password="wrongpass", username="nobody_here").get_json()
+    assert real == fake
+    for _ in range(4):
+        login(client, password="wrongpass", username="nobody_here")
+    assert login(client, username="nobody_here").status_code == 423
+
+
+def test_one_network_cant_keep_guessing(client, account):
+    for i in range(40):
+        login(client, password="wrongpass", username=f"guess{i}", ip="10.0.0.7")
+    assert login(client, ip="10.0.0.7").status_code == 429
+    assert login(client, ip="10.0.0.8").get_json()["ok"]
+
+
+def test_sign_ups_are_limited_per_network(client):
+    samples = [typing(seed=i) for i in range(8)]
+    for i in range(20):
+        res = client.post("/api/enroll", json={"username": f"user{i}", "password": PASSWORD, "samples": samples})
+        assert res.status_code == 200
+    res = client.post("/api/enroll", json={"username": "one_more", "password": PASSWORD, "samples": samples})
+    assert res.status_code == 429
+
+
+def test_pages_send_safety_headers(client):
+    res = client.get("/")
+    assert res.headers["X-Frame-Options"] == "DENY"
+    assert res.headers["X-Content-Type-Options"] == "nosniff"
+
+
+def test_huge_requests_are_refused(client, account):
+    res = client.post("/api/login", data="x" * 100_000, content_type="application/json")
+    assert res.status_code == 413
 
 
 def test_recovery_code_unlocks_once(client, account):

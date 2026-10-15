@@ -18,8 +18,13 @@ MAX_FAILS = 5
 PUBLIC_TRIES = 15
 PUBLIC_TRIES_PER_NETWORK = 60
 MAX_TESTING_MINUTES = 7 * 24 * 60
+FAILS_PER_NETWORK = 40
+SIGNUPS_PER_NETWORK = 20
+HOUR = 60 * 60
 LOCK_SECONDS = 15 * 60
 CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+
+DUMMY_HASH = generate_password_hash("not a real password")
 
 app = Flask(__name__)
 
@@ -34,7 +39,17 @@ def load_secret():
 
 
 app.secret_key = load_secret()
-app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax", MAX_CONTENT_LENGTH=64 * 1024)
+
+
+@app.after_request
+def harden(response):
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["Referrer-Policy"] = "same-origin"
+    if request.is_secure or request.headers.get("X-Forwarded-Proto") == "https":
+        response.headers["Strict-Transport-Security"] = "max-age=31536000"
+    return response
 
 def db():
     if "db" not in g:
@@ -85,6 +100,21 @@ def init_db():
                 username TEXT NOT NULL,
                 round INTEGER NOT NULL,
                 tester TEXT NOT NULL,
+                network TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS failures (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                network TEXT NOT NULL,
+                created_at REAL NOT NULL
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS signups (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 network TEXT NOT NULL,
                 created_at REAL NOT NULL
             )
@@ -149,27 +179,48 @@ def score_of(row):
 def get_user(username):
     return db().execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
 
-def minutes_left(user):
-    return max(1, math.ceil((user["locked_until"] - time.time()) / 60))
+def client_network():
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    return request.headers.get("X-Real-IP") or forwarded.split(",")[0].strip() or request.remote_addr or "?"
 
-def register_failure(username):
-    fails = get_user(username)["failed_logins"] + 1
-    if fails >= MAX_FAILS:
-        db().execute(
-            "UPDATE users SET failed_logins = 0, locked_until = ? WHERE username = ?",
-            (time.time() + LOCK_SECONDS, username),
-        )
-        db().commit()
+def recent_failures(username, network):
+    rows = db().execute(
+        "SELECT created_at FROM failures WHERE username = ? AND network = ? AND created_at > ? ORDER BY created_at",
+        (username, network, time.time() - LOCK_SECONDS),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+def locked_for(username, network):
+    times = recent_failures(username, network)
+    if len(times) < MAX_FAILS:
         return 0
-    db().execute("UPDATE users SET failed_logins = ? WHERE username = ?", (fails, username))
+    return max(1, math.ceil((times[len(times) - MAX_FAILS] + LOCK_SECONDS - time.time()) / 60))
+
+def network_blocked(network, table="failures", limit=FAILS_PER_NETWORK):
+    count = db().execute(
+        f"SELECT COUNT(*) FROM {table} WHERE network = ? AND created_at > ?", (network, time.time() - HOUR)
+    ).fetchone()[0]
+    return count >= limit
+
+def register_failure(username, network):
+    db().execute(
+        "INSERT INTO failures (username, network, created_at) VALUES (?, ?, ?)", (username, network, time.time())
+    )
     db().commit()
-    return MAX_FAILS - fails
+    return max(0, MAX_FAILS - len(recent_failures(username, network)))
+
+def clear_failures(username, network=None):
+    if network is None:
+        db().execute("DELETE FROM failures WHERE username = ?", (username,))
+    else:
+        db().execute("DELETE FROM failures WHERE username = ? AND network = ?", (username, network))
 
 def check_attempt(user, password, keys):
     keys = clean_keys(keys, len(password))
     if keys is None:
         return None, fail("Couldn't read the typing rhythm. Type it again in one go.")
-    if user is None or not check_password_hash(user["pw_hash"], password):
+    stored = user["pw_hash"] if user is not None else DUMMY_HASH
+    if not check_password_hash(stored, password) or user is None:
         return None, fail("Login failed.", 401)
     samples = json.loads(user["samples"])
     profile = rhythm.build_profile(samples)
@@ -256,6 +307,11 @@ def enroll():
         return fail("Password needs at least 6 characters, otherwise there's no rhythm to learn.")
     if not isinstance(raw, list) or len(raw) < ENROLL_SAMPLES:
         return fail(f"Need {ENROLL_SAMPLES} samples of your typing.")
+    network = client_network()
+    if network_blocked(network, "signups", SIGNUPS_PER_NETWORK):
+        return fail("Too many sign-ups from your network. Try again in an hour.", 429)
+    db().execute("INSERT INTO signups (network, created_at) VALUES (?, ?)", (network, time.time()))
+    db().commit()
     if get_user(username) is not None:
         return fail("That username is taken.", 409)
     samples = [clean_keys(s, len(password)) for s in raw]
@@ -275,25 +331,27 @@ def enroll():
 @app.post("/api/login")
 def login():
     data, username, password = read_body()
-    user = get_user(username)
-    if user is not None and user["locked_until"] > time.time():
+    network = client_network()
+    if network_blocked(network):
+        return fail("Too many failed logins from your network. Try again in an hour.", 429)
+    wait = locked_for(username, network)
+    if wait:
         return fail(
-            f"Too many failed attempts. Try again in {minutes_left(user)} min, or unlock with your recovery code.",
+            f"Too many failed attempts. Try again in {wait} min, or unlock with your recovery code.",
             423, reason="locked",
         )
+    user = get_user(username)
     result, error = check_attempt(user, password, data.get("keys"))
     if error:
-        if user is not None and error[1] == 401:
-            return fail("Login failed.", 401, attempts_left=register_failure(username))
+        if error[1] == 401:
+            return fail("Login failed.", 401, attempts_left=register_failure(username, network))
         return error
     if not result["accepted"]:
         record_alert(username, result["profile"], result["keys"])
-        return fail("Login failed.", 401, attempts_left=register_failure(username))
+        return fail("Login failed.", 401, attempts_left=register_failure(username, network))
     samples = (result["samples"] + [result["keys"]])[-MAX_SAMPLES:]
-    db().execute(
-        "UPDATE users SET samples = ?, failed_logins = 0 WHERE username = ?",
-        (json.dumps(samples), username),
-    )
+    db().execute("UPDATE users SET samples = ? WHERE username = ?", (json.dumps(samples), username))
+    clear_failures(username, network)
     alerts = unseen_alerts(username, password)
     db().commit()
     session.clear()
@@ -325,15 +383,20 @@ def logout():
 @app.post("/api/unlock")
 def unlock():
     data, username, _password = read_body()
+    network = client_network()
+    if network_blocked(network):
+        return fail("Too many failed attempts from your network. Try again in an hour.", 429)
     user = get_user(username)
     code = normalize_code(data.get("code", ""))
     if user is None or not user["recovery_hash"] or not check_password_hash(user["recovery_hash"], code):
+        register_failure(username, network)
         return fail("That recovery code doesn't match.", 401)
     new_code = new_recovery_code()
     db().execute(
-        "UPDATE users SET failed_logins = 0, locked_until = 0, recovery_hash = ? WHERE username = ?",
+        "UPDATE users SET recovery_hash = ? WHERE username = ?",
         (generate_password_hash(normalize_code(new_code)), username),
     )
+    clear_failures(username)
     db().commit()
     return jsonify(ok=True, recovery_code=new_code)
 
@@ -355,11 +418,6 @@ def test_attempt():
     )
     db().commit()
     return jsonify(ok=True, accepted=result["accepted"], distance=result["distance"])
-
-def client_network():
-    forwarded = request.headers.get("X-Forwarded-For", "")
-    return request.headers.get("X-Real-IP") or forwarded.split(",")[0].strip() or request.remote_addr or "?"
-
 
 def tester_id():
     if "tester" not in session:
