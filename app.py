@@ -5,6 +5,7 @@ import secrets
 import sqlite3
 import time
 from pathlib import Path
+import click
 from flask import Flask, g, jsonify, render_template, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 import rhythm
@@ -112,6 +113,7 @@ def init_db():
                 created_at REAL NOT NULL
             )
         """)
+        conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS signups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -293,12 +295,29 @@ def owner_only(username):
     return None
 
 
+def signups_open():
+    row = db().execute("SELECT value FROM settings WHERE key = 'signups'").fetchone()
+    return row is None or row[0] == "on"
+
+
+@app.cli.command("signups")
+@click.argument("state", type=click.Choice(["on", "off"]))
+def set_signups(state):
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('signups', ?)", (state,))
+    click.echo(f"Sign-ups are now {'open' if state == 'on' else 'closed'}.")
+
+
 @app.get("/")
 def index():
-    return render_template("index.html", enroll_samples=ENROLL_SAMPLES, max_fails=MAX_FAILS, public_tries=PUBLIC_TRIES)
+    return render_template("index.html", enroll_samples=ENROLL_SAMPLES, max_fails=MAX_FAILS,
+                           public_tries=PUBLIC_TRIES, signups=signups_open())
 
 @app.post("/api/enroll")
 def enroll():
+    if not signups_open():
+        return fail("Sign-ups are closed right now.", 403)
     data, username, password = read_body()
     raw = data.get("samples")
     if not username or len(username) > 32:

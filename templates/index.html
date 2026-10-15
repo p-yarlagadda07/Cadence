@@ -16,8 +16,8 @@
       <p class="tag">A login that checks <em>how</em> you type your password, not just what you type.</p>
     </header>
 
-    <nav class="tabs" role="tablist">
-      <button class="tab active" data-tab="signup" role="tab">Sign up</button>
+    <nav class="tabs" role="tablist" data-signups="{{ 'on' if signups else 'off' }}">
+      <button class="tab active" data-tab="signup" role="tab"{% if not signups %} hidden{% endif %}>Sign up</button>
       <button class="tab" data-tab="login" role="tab">Log in</button>
       <button class="tab" data-tab="test" role="tab">Test it</button>
       <button class="tab" data-tab="how" role="tab">How it works</button>

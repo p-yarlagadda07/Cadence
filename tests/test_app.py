@@ -138,6 +138,19 @@ def test_sign_ups_are_limited_per_network(client):
     assert res.status_code == 429
 
 
+def test_sign_ups_can_be_closed(client, account):
+    runner = cadence.app.test_cli_runner()
+    assert "closed" in runner.invoke(args=["signups", "off"]).output
+    samples = [typing(seed=i) for i in range(8)]
+    res = client.post("/api/enroll", json={"username": "new_person", "password": PASSWORD, "samples": samples})
+    assert res.status_code == 403
+    assert 'data-signups="off"' in client.get("/").get_data(as_text=True)
+    assert login(client).get_json()["ok"]
+    runner.invoke(args=["signups", "on"])
+    res = client.post("/api/enroll", json={"username": "new_person", "password": PASSWORD, "samples": samples})
+    assert res.status_code == 200
+
+
 def test_pages_send_safety_headers(client):
     res = client.get("/")
     assert res.headers["X-Frame-Options"] == "DENY"

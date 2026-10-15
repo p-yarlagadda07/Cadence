@@ -46,6 +46,15 @@ Then open http://localhost:5001. On a Mac, port 5000 is taken by AirPlay, which
 is why this uses 5001. Use a laptop or desktop keyboard; phones don't report key
 timings properly.
 
+To stop new people signing up once your own accounts exist (the Sign up tab
+disappears and the server refuses new accounts):
+
+```
+python -m flask --app app signups off
+```
+
+`signups on` opens it again. Existing accounts keep working either way.
+
 To run the tests:
 
 ```
