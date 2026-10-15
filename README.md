@@ -164,6 +164,16 @@ marked as "Someone else". It shows two numbers:
 - **FRR (false reject rate):** how often you get locked out of your own account
 - **FAR (false accept rate):** how often someone else gets in
 
+You can also let people test from their own devices. On the Test page, pick
+how long to open your account for (30 minutes up to a week) and add an
+optional note, for example the password if it's a throwaway test account.
+While it's open, anyone who visits sees "Can you log in as you?" and can try,
+but they only ever see "Let in" or "Blocked". Each person gets 15 tries per
+round, so it can't be used to practise until something works, and there's a
+looser cap per network as a backstop. Their attempts land in your stats as
+someone else. Public tries never lock your account or create security alerts,
+and testing closes by itself when the time runs out.
+
 Making it stricter lowers FAR but raises FRR, and the other way round. The
 chart shows both across every threshold, and "Use best threshold" picks the
 middle of the range with the fewest mistakes.
