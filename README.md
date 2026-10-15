@@ -1,5 +1,7 @@
 # Cadence
 
+[![tests](https://github.com/p-yarlagadda07/Cadence/actions/workflows/tests.yml/badge.svg)](https://github.com/p-yarlagadda07/Cadence/actions/workflows/tests.yml)
+
 A login system that checks how you type your password, not just what you type.
 
 Everyone has their own typing rhythm. How long you hold each key, how quickly
@@ -9,6 +11,10 @@ the password and the rhythm. If someone else types your password correctly but
 with a different rhythm, they don't get in.
 
 This is called keystroke dynamics, a type of behavioural biometrics.
+
+On the CMU keystroke benchmark (51 typists, 20,400 typed passwords) Cadence's
+matching gets a **7.9% equal error rate**, better than the 9.6% published for
+the same method. With real people on the live site it's about 7%.
 
 **Live demo:** https://pyarlagadda07.pythonanywhere.com
 
@@ -37,6 +43,16 @@ python -m flask --app app run --port 5001
 Then open http://localhost:5001. On a Mac, port 5000 is taken by AirPlay, which
 is why this uses 5001. Use a laptop or desktop keyboard; phones don't report key
 timings properly.
+
+To run the tests:
+
+```
+pip install pytest
+pytest
+```
+
+They cover the matching logic and every API route, including lockout, recovery
+codes and upgrading an old database. GitHub Actions runs them on every push.
 
 ## How it works
 
@@ -123,11 +139,40 @@ middle of the range with the fewest mistakes.
 
 ## Results
 
+### CMU benchmark
+
+Testing with friends only goes so far, so I also ran Cadence's matching code on
+the [CMU Keystroke Dynamics Benchmark](https://www.cs.cmu.edu/~keystroke/), the
+dataset the 2009 paper used: 51 people, each typing `.tie5Roanl` 400 times. I
+followed the paper's own evaluation script, and first reproduced its result to
+make sure my evaluation was right.
+
+| Detector | Trained on | EER |
+| --- | --- | --- |
+| Paper's scaled Manhattan (my reproduction) | first 200 typings | 9.6% |
+| Cadence rhythm score | first 200 typings | 9.2% |
+| Paper's scaled Manhattan | 8 familiar typings | 8.4% |
+| Cadence rhythm + speed check | 8 familiar typings | **7.9%** |
+
+My reproduction matches the paper's published 9.62%. Cadence does better in
+both settings, mostly because it drops the release-to-press timings, which only
+repeat what the other two measurements already say. "8 familiar typings" is the
+closest match to signing up for Cadence: 8 typings of a password the person
+already knows.
+
+It also showed what Cadence is bad at. Trained on someone's first 15 attempts
+at a password they had never typed before, the error rate jumps to 30%,
+because their rhythm keeps changing while they learn it. And the speed check
+doesn't help on this dataset, since none of its impostors are trying to copy
+anyone. Full results and how to run it are in [benchmark/](benchmark/).
+
+### Testing with real people
+
 I tested it three times: once on my laptop, then twice on the live site as I
 fixed problems the earlier rounds showed up. The latest round got both error
-rates down to 7%.
+rates down to 7%, close to what the benchmark predicts.
 
-### Round 1: on my laptop
+#### Round 1: on my laptop
 
 **Setup.** One account, mine, with a 9 character password: 1 capital letter,
 1 special character and 2 numbers. I type capitals and symbols with the right
@@ -155,7 +200,7 @@ one was caught by the speed check:
 
 ![Impostor attempts getting blocked](screenshots/attempts.png)
 
-### Round 2: on the live site
+#### Round 2: on the live site
 
 After deploying, I made a fresh account on the live site with the same kind of
 password. At first a lot of my own logins got blocked for speed, because I had
@@ -178,7 +223,7 @@ not the rhythm score:
 
 ![Impostor attempts on the live site](screenshots/live-attempts.png)
 
-### Round 3: on the live site, a day later
+#### Round 3: on the live site, a day later
 
 The next day my own logins started getting blocked for speed again, even with
 good rhythm scores. I checked the profile on the server and found the problem:
@@ -233,9 +278,9 @@ caught the ones that were furthest off:
 - My own typing varies more than I expected. Some days I'm just faster, which
   is why the speed check had to be loosened.
 
-These are small tests with a handful of people, so the exact numbers would
-change with more testers. A proper evaluation would use a public dataset like
-the CMU keystroke benchmark.
+These are small tests with a handful of people, so on their own the exact
+numbers wouldn't mean much. The CMU benchmark above is the bigger test, and it
+lands in the same place.
 
 ## Project structure
 
@@ -245,6 +290,8 @@ rhythm.py            feature extraction, matching, threshold
 templates/index.html the page
 static/app.js        key recording, charts, UI
 static/style.css     styles
+tests/               pytest tests for rhythm.py and the API
+benchmark/           CMU benchmark script and results
 ```
 
 Data goes into a local SQLite file, `cadence.db`, which gets created on first
@@ -270,5 +317,4 @@ text.
 
 - Try other detectors (nearest neighbour, Mahalanobis distance, one-class SVM)
   and compare FAR/FRR
-- Test on the public CMU keystroke dataset to get numbers from 51 typists
 - Learn typing rhythm on free text, not just a fixed password
