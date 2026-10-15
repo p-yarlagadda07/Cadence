@@ -1,5 +1,6 @@
 import json
 import math
+import os
 import secrets
 import sqlite3
 import time
@@ -8,7 +9,7 @@ from flask import Flask, g, jsonify, render_template, request
 from werkzeug.security import check_password_hash, generate_password_hash
 import rhythm
 
-DB_PATH = Path(__file__).parent / "cadence.db"
+DB_PATH = Path(os.environ.get("CADENCE_DB", Path(__file__).parent / "cadence.db"))
 ENROLL_SAMPLES = 8
 MAX_SAMPLES = 15
 MAX_HOLD_MS = 2000
