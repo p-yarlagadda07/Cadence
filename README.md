@@ -127,14 +127,39 @@ When you sign up you get a recovery code, shown once, which unlocks the account
 straight away. Using it gives you a new one, so each code only works once. It's
 stored hashed, like the password.
 
+**What a failed login shows.** Just "Login failed" and how many tries are
+left. Wrong password, wrong rhythm and wrong speed all look the same. The first
+version showed the score, which check failed and even charts of your usual
+rhythm, which is a gift to an attacker: they could see exactly how you type and
+keep adjusting until they got in. Security people call this an oracle. Typing
+timings are also checked before the password, so a broken request can't be used
+to find out whether a guessed password was right.
+
+**Security alerts.** If someone types your correct password but their typing
+doesn't match, the attempt is saved. Next time you log in you see when it
+happened and why it was blocked, for example:
+
+> Compared with you, they:
+> - used the right Shift for 'H', you use the left
+> - went between 'd' and '@' 1.4x faster than you
+> - held '6' 1.9x as long as you do
+
+So the explanation goes to the owner, never to the person trying to get in. A
+blocked attempt with the right password also means someone knows it, which you
+would otherwise never find out. Alerts store key positions, not characters, so
+the database never holds pieces of your password; the letters are filled in
+from the password you just typed.
+
 **Adapting.** Every successful login gets added to your profile (the last 15
 are kept), so it keeps up if your typing slowly changes.
 
 ## Testing it properly
 
-The Test tab is where you find out if it actually works. Type your password a
-few times marked as "It's me", then give your password to friends and let them
-try marked as "Someone else". It shows two numbers:
+The Test tab is where you find out if it actually works. It only opens after
+you've logged in, because it shows how close each attempt was, which would help
+someone practise copying you. Once you're logged in, type your password a few
+times marked as "It's me", then hand the keyboard to friends and let them try
+marked as "Someone else". It shows two numbers:
 
 - **FRR (false reject rate):** how often you get locked out of your own account
 - **FAR (false accept rate):** how often someone else gets in
@@ -309,13 +334,11 @@ text.
 
 ## Limitations
 
-- This is a demo. The login screen tells you whether it was the password or
-  the rhythm that failed, which a real system shouldn't do since it helps an
-  attacker.
-- No sessions. Logging in shows the result but doesn't keep you signed in.
-- The Test page doesn't count towards the lockout and shows whether each
-  attempt would pass, so someone could practise on it. It's there for tuning
-  and would be removed in a real deployment.
+- This is a demo. Logging in starts a session, but there's no app behind the
+  login, so the session only unlocks your charts and the Test page.
+- The Test page doesn't count towards the lockout. It's owner only, but a
+  friend you hand the keyboard to can still see their scores there. That's the
+  point of it, and it would be removed in a real deployment.
 - Your rhythm can change with a different keyboard, an injury, or being half
   asleep, so this works best as an extra check alongside the password, not a
   replacement for it.
