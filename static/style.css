@@ -102,7 +102,7 @@ body {
 .field { display: block; margin-bottom: 16px; }
 .field > span { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
 
-input[type="text"], input[type="password"] {
+input[type="text"], input[type="password"], select {
   width: 100%;
   padding: 11px 13px;
   border: 1px solid var(--line);
@@ -205,6 +205,9 @@ canvas { width: 100%; display: block; }
 .alerts li li { display: list-item; border: 0; padding: 2px 0; }
 
 .lead { margin-top: 0; }
+.note { background: var(--accent-soft); border-radius: 10px; padding: 10px 13px; margin: 0 0 14px; }
+select { font-family: Inter, system-ui, sans-serif; font-size: 15px; width: auto; min-width: 150px; }
+.row select { flex: none; }
 .who { display: flex; gap: 18px; margin-bottom: 14px; }
 .who label { cursor: pointer; }
 

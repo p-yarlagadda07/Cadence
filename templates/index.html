@@ -102,12 +102,50 @@
     </section>
 
     <section class="panel" id="test">
-      <div class="card" id="t-locked">
+      <div class="card" id="pub" hidden>
+        <p class="lead">Can you log in as <b id="pub-name"></b>?</p>
+        <p class="small">You know the password. The question is whether you can type it the way the owner does. Type it naturally and press Enter. You'll only see whether you got in.</p>
+        <p class="note" id="pub-note" hidden></p>
+        <label class="field" id="pub-pick" hidden>
+          <span>Account</span>
+          <select id="pub-user"></select>
+        </label>
+        <form id="pub-form" class="field" autocomplete="off">
+          <span>Password, then Enter</span>
+          <input id="pub-pass" type="password" autocomplete="off">
+          <div class="strip" id="pub-strip"></div>
+        </form>
+        <div class="verdict" id="pub-verdict"></div>
+        <p class="msg" id="pub-msg"></p>
+      </div>
+
+      <div class="card" id="t-locked" hidden>
         <p class="lead">Log in first.</p>
         <p class="small">The test page shows how close each attempt was, which would help someone practise copying you. So it only opens for the account owner, after a successful login. Once you're in, friends can test on this browser.</p>
       </div>
 
       <div id="t-open" hidden>
+      <div class="card">
+        <p class="lead">Let other people test</p>
+        <p class="small">Open this account for a while so anyone on the site can try to log in as you, from their own device. They only see "Let in" or "Blocked", get {{ public_tries }} tries each, and their attempts show up below as someone else. Use a separate test account if you're going to share the password publicly.</p>
+        <div class="row">
+          <select id="ot-minutes">
+            <option value="30">30 minutes</option>
+            <option value="60">1 hour</option>
+            <option value="180">3 hours</option>
+            <option value="1440" selected>1 day</option>
+            <option value="4320">3 days</option>
+            <option value="10080">1 week</option>
+          </select>
+          <input id="ot-note" type="text" maxlength="200" placeholder="note for testers (optional)" autocomplete="off">
+        </div>
+        <div class="row">
+          <button id="ot-open" class="btn" type="button">Open testing</button>
+          <button id="ot-close" class="btn ghost danger" type="button" hidden>Close now</button>
+        </div>
+        <p class="msg" id="ot-status"></p>
+      </div>
+
       <div class="card">
         <p class="lead">Hand the keyboard to friends, give them your password, and see if they can get in. Mark each attempt so the numbers mean something.</p>
         <label class="field">
@@ -175,6 +213,8 @@
         <p>The app also remembers how long you usually take to type the whole password. Someone who copies your pattern but types it a lot faster or slower than you ever do gets blocked, even if their rhythm score looks fine.</p>
         <h2>Lockout</h2>
         <p>After {{ max_fails }} failed logins in a row, whether it's a wrong password or the wrong rhythm, the account locks for 15 minutes. That stops someone from just retrying until they get lucky. You get a recovery code when you sign up, and it unlocks the account straight away.</p>
+        <h2>Testing by other people</h2>
+        <p>The owner can open their account for testing for a set time. Anyone visiting can then try to log in as them, but only sees "Let in" or "Blocked", with {{ public_tries }} tries each. That's enough to measure how well it keeps people out without turning into a practice tool.</p>
         <h2>Getting better over time</h2>
         <p>Every successful login gets added to your profile (up to the last 15), so it keeps up as your typing changes.</p>
         <h2>Limits</h2>

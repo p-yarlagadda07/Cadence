@@ -29,10 +29,57 @@ function remember(username) {
 }
 
 function applyAccess() {
-  $("t-locked").hidden = Boolean(me);
   $("t-open").hidden = !me;
   $("t-user").value = me || "";
+  loadTesting();
 }
+
+const stamp = (t) => new Date(t * 1000).toLocaleString([], {
+  day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+});
+
+let testing = null;
+
+async function loadTesting() {
+  try {
+    testing = await (await fetch("/api/testing")).json();
+  } catch {
+    return;
+  }
+  const open = testing.open || [];
+  $("pub").hidden = Boolean(me) || open.length === 0;
+  $("t-locked").hidden = Boolean(me) || open.length > 0;
+  if (!me && open.length) {
+    const pick = $("pub-user");
+    const current = pick.value;
+    pick.replaceChildren(...open.map((o) => {
+      const opt = document.createElement("option");
+      opt.value = o.username;
+      opt.textContent = o.username;
+      return opt;
+    }));
+    if (open.some((o) => o.username === current)) pick.value = current;
+    $("pub-pick").hidden = open.length < 2;
+    showPublicTarget();
+  }
+  const mine = testing.mine;
+  if (me && mine) {
+    $("ot-close").hidden = !mine.open;
+    $("ot-open").textContent = mine.open ? "Restart testing" : "Open testing";
+    say($("ot-status"), mine.open
+      ? `Open until ${stamp(mine.until)}. ${mine.tries} ${mine.tries === 1 ? "try" : "tries"} so far.`
+      : "Closed. Only you can use the test page right now.", mine.open ? "good" : "");
+  }
+}
+
+function showPublicTarget() {
+  const target = (testing.open || []).find((o) => o.username === $("pub-user").value) || testing.open[0];
+  $("pub-name").textContent = target.username;
+  $("pub-note").textContent = target.note;
+  $("pub-note").hidden = !target.note;
+}
+
+$("pub-user").addEventListener("change", showPublicTarget);
 
 async function refreshMe() {
   try {
@@ -48,7 +95,10 @@ function showTab(name) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === name));
   store("tab", name);
-  if (name === "test" && me) loadStats();
+  if (name === "test") {
+    loadTesting();
+    if (me) loadStats();
+  }
 }
 
 function say(el, text, kind = "") {
@@ -243,9 +293,7 @@ function showAlerts(alerts) {
   alerts.forEach((a) => {
     const li = document.createElement("li");
     const when = document.createElement("b");
-    when.textContent = new Date(a.at * 1000).toLocaleString([], {
-      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
-    });
+    when.textContent = stamp(a.at);
     const why = document.createElement("div");
     const intro = document.createElement("span");
     intro.textContent = a.reasons.length ? "Compared with you, they:" : "Their typing was a little off on many keys at once.";
@@ -308,6 +356,49 @@ function showResult(data) {
   });
 }
 
+const pubRec = recorder($("pub-pass"), $("pub-strip"));
+
+$("pub-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const password = $("pub-pass").value;
+  const keys = pubRec.take();
+  pubRec.reset();
+  const msg = $("pub-msg");
+  const verdict = $("pub-verdict");
+  verdict.textContent = "";
+  if (!keys) return say(msg, "No corrections allowed. Type it again in one go.", "bad");
+  const data = await post("/api/testing/try", { username: $("pub-name").textContent, password, keys });
+  const left = data.tries_left;
+  const leftNote = left === undefined ? "" : ` ${left} ${left === 1 ? "try" : "tries"} left.`;
+  if (!data.ok) {
+    if (left === 0) $("pub-pass").disabled = true;
+    return say(msg, data.error + (left ? leftNote : ""), "bad");
+  }
+  verdict.textContent = data.let_in ? "Let in." : "Blocked.";
+  verdict.className = "verdict " + (data.let_in ? "good" : "bad");
+  if (left === 0) {
+    $("pub-pass").disabled = true;
+    return say(msg, "That was your last try. Thanks for testing!");
+  }
+  say(msg, leftNote.trim());
+});
+
+$("ot-open").addEventListener("click", async () => {
+  const data = await post("/api/testing", {
+    username: me,
+    minutes: Number($("ot-minutes").value),
+    note: $("ot-note").value,
+  });
+  if (!data.ok) return say($("ot-status"), data.error, "bad");
+  loadTesting();
+});
+
+$("ot-close").addEventListener("click", async () => {
+  const data = await post("/api/testing", { username: me, minutes: 0 });
+  if (!data.ok) return say($("ot-status"), data.error, "bad");
+  loadTesting();
+});
+
 const tRec = recorder($("t-pass"), $("t-strip"));
 let stats = null;
 
@@ -330,7 +421,7 @@ $("t-form").addEventListener("submit", async (e) => {
 function drawLog() {
   const t = Number($("s-thr").value);
   $("t-log").innerHTML = stats.recent.map((r) => {
-    const who = r.label === "owner" ? "you" : "impostor";
+    const who = r.label === "owner" ? "you" : r.public ? "tester" : "impostor";
     const inside = r.speed_ok && r.distance <= t;
     const verdict = inside ? "let in" : r.speed_ok ? "blocked" : "blocked (speed)";
     return `<li><span>${who}</span><span>${r.distance.toFixed(2)}</span><span class="${inside ? "yes" : "no"}">${verdict}</span></li>`;
