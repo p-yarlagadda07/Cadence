@@ -191,3 +191,103 @@ def test_old_databases_are_upgraded(client, tmp_path, monkeypatch):
         assert {"failed_logins", "locked_until", "recovery_hash"} <= cols
         assert conn.execute("SELECT username FROM users").fetchone() == ("old",)
         assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'alerts'").fetchone()
+
+
+def open_testing(client, minutes=60, note=""):
+    login(client)
+    res = client.post("/api/testing", json={"username": "poojitha", "minutes": minutes, "note": note})
+    client.post("/api/logout")
+    return res
+
+
+def public_try(client, password=PASSWORD, seed=9, like_owner=False):
+    keys = typing(seed=seed) if like_owner else typing(seed=seed, **OTHER)
+    return client.post("/api/testing/try", json={"username": "poojitha", "password": password, "keys": keys})
+
+
+def test_only_the_owner_can_open_testing(client, account):
+    res = client.post("/api/testing", json={"username": "poojitha", "minutes": 60})
+    assert res.status_code == 403
+    assert client.get("/api/testing").get_json()["open"] == []
+
+
+def test_testing_window_must_be_sensible(client, account):
+    login(client)
+    for minutes in (1, 99999, "soon"):
+        res = client.post("/api/testing", json={"username": "poojitha", "minutes": minutes})
+        assert res.status_code == 400
+
+
+def test_public_try_needs_an_open_window(client, account):
+    assert public_try(client).status_code == 403
+
+
+def test_public_try_only_says_let_in_or_not(client, account):
+    open_testing(client, note="The password is on my LinkedIn post")
+    listing = client.get("/api/testing").get_json()
+    assert listing["open"][0]["username"] == "poojitha"
+    assert listing["open"][0]["note"] == "The password is on my LinkedIn post"
+    data = public_try(client).get_json()
+    assert set(data) == {"ok", "let_in", "tries_left"}
+    assert data["let_in"] is False
+    assert data["tries_left"] == 14
+    assert public_try(client, seed=100, like_owner=True).get_json()["let_in"] is True
+
+
+def test_each_person_gets_fifteen_tries(client, account):
+    open_testing(client)
+    for _ in range(15):
+        assert public_try(client).status_code == 200
+    res = public_try(client)
+    assert res.status_code == 429
+    assert res.get_json()["tries_left"] == 0
+
+
+def test_a_new_window_resets_the_tries(client, account):
+    open_testing(client)
+    for _ in range(15):
+        public_try(client)
+    open_testing(client)
+    assert public_try(client).status_code == 200
+
+
+def test_wrong_password_uses_a_try_but_isnt_recorded(client, account):
+    open_testing(client)
+    res = public_try(client, password="wrongpass")
+    assert res.status_code == 401
+    assert res.get_json()["tries_left"] == 14
+    assert rows("SELECT COUNT(*) FROM attempts")[0][0] == 0
+
+
+def test_public_tries_show_up_as_someone_else(client, account):
+    open_testing(client)
+    public_try(client)
+    public_try(client)
+    login(client)
+    stats = client.get("/api/stats?username=poojitha").get_json()
+    assert len(stats["impostor"]) == 2
+    assert all(r["public"] for r in stats["recent"])
+
+
+def test_public_tries_dont_lock_or_alert_the_owner(client, account):
+    open_testing(client)
+    for _ in range(10):
+        public_try(client)
+    data = login(client).get_json()
+    assert data["ok"]
+    assert data["alerts"] == []
+
+
+def test_closing_testing_stops_tries(client, account):
+    open_testing(client)
+    login(client)
+    client.post("/api/testing", json={"username": "poojitha", "minutes": 0})
+    client.post("/api/logout")
+    assert public_try(client).status_code == 403
+
+
+def test_testing_closes_by_itself(client, account):
+    open_testing(client)
+    with sqlite3.connect(cadence.DB_PATH) as conn:
+        conn.execute("UPDATE users SET testing_until = 1")
+    assert public_try(client).status_code == 403
