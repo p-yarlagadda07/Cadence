@@ -1,11 +1,27 @@
+import json
 import re
+import sqlite3
 
+import app as cadence
 from conftest import PASSWORD, typing
+
+OTHER = dict(holds=[160, 60, 70, 150, 140, 60, 70, 140, 60], gaps=[120, 260, 110, 230, 130, 240, 120, 250])
 
 
 def login(client, keys=None, password=PASSWORD, username="poojitha"):
     keys = keys if keys is not None else typing(seed=100)
     return client.post("/api/login", json={"username": username, "password": password, "keys": keys})
+
+
+def try_test_page(client, label="owner", seed=1, **kw):
+    return client.post("/api/test", json={"username": "poojitha", "password": PASSWORD,
+                                          "keys": typing(seed=seed, **kw), "label": label})
+
+
+
+def rows(sql):
+    with sqlite3.connect(cadence.DB_PATH) as conn:
+        return conn.execute(sql).fetchall()
 
 
 def test_enroll_returns_a_recovery_code(account):
@@ -33,40 +49,51 @@ def test_enroll_rejects_a_broken_sample(client):
 
 
 def test_owner_gets_in_and_profile_grows(client, account):
-    res = login(client)
-    data = res.get_json()
+    data = login(client).get_json()
     assert data["ok"], data
-    assert data["reason"] is None
-    with client.application.app_context():
-        import json
-        from app import db
-        samples = json.loads(db().execute("SELECT samples FROM users").fetchone()["samples"])
+    assert data["alerts"] == []
+    samples = json.loads(rows("SELECT samples FROM users")[0][0])
     assert len(samples) == account["kept"] + 1
 
 
-def test_wrong_password_is_rejected(client, account):
-    res = login(client, password="wrongpass")
-    assert res.status_code == 401
-    assert res.get_json()["attempts_left"] == 4
+def test_failed_logins_all_look_the_same(client, account):
+    wrong_password = login(client, password="wrongpass")
+    wrong_rhythm = login(client, keys=typing(seed=9, **OTHER))
+    too_fast = login(client, keys=typing(speed=0.4, seed=7))
+    for res in (wrong_password, wrong_rhythm, too_fast):
+        data = res.get_json()
+        assert res.status_code == 401
+        assert set(data) == {"ok", "error", "attempts_left"}
+        assert data["error"] == "Login failed."
 
 
-def test_much_faster_typing_is_blocked_for_speed(client, account):
-    data = login(client, keys=typing(speed=0.4, seed=7)).get_json()
-    assert not data["ok"]
-    assert data["reason"] == "speed"
-
-
-def test_different_rhythm_is_blocked(client, account):
-    other = typing(seed=9, holds=[160, 60, 70, 150, 140, 60, 70, 140, 60], gaps=[120, 260, 110, 230, 130, 240, 120, 250])
-    data = login(client, keys=other).get_json()
-    assert not data["ok"]
-
-
-def test_corrections_and_bad_timings_are_rejected(client, account):
+def test_bad_timings_are_rejected_before_the_password_is_checked(client, account):
     keys = typing(seed=1)
     keys[2], keys[3] = keys[3], keys[2]
-    assert login(client, keys=keys).status_code == 400
+    right = login(client, keys=keys)
+    wrong = login(client, keys=keys, password="wrongpass")
+    assert right.status_code == wrong.status_code == 400
+    assert right.get_json() == wrong.get_json()
     assert login(client, keys=typing(seed=1)[:-1]).status_code == 400
+
+
+def test_blocked_attempt_with_right_password_becomes_an_alert(client, account):
+    login(client, keys=typing(seed=9, side=1, **OTHER))
+    login(client, password="wrongpass")
+    data = login(client).get_json()
+    assert data["ok"]
+    assert len(data["alerts"]) == 1
+    reasons = " ".join(data["alerts"][0]["reasons"])
+    assert "right Shift for 'H'" in reasons
+    assert login(client).get_json()["alerts"] == []
+
+
+def test_alerts_never_store_password_characters(client, account):
+    login(client, keys=typing(seed=9, side=1, **OTHER))
+    stored = rows("SELECT details FROM alerts")[0][0]
+    for ch in set(PASSWORD):
+        assert f'"{ch}"' not in stored
+        assert f"'{ch}'" not in stored
 
 
 def test_five_failures_lock_the_account(client, account):
@@ -81,8 +108,7 @@ def test_recovery_code_unlocks_once(client, account):
     for _ in range(5):
         login(client, password="wrongpass")
     code = account["recovery_code"].lower().replace("-", " ")
-    res = client.post("/api/unlock", json={"username": "poojitha", "code": code})
-    data = res.get_json()
+    data = client.post("/api/unlock", json={"username": "poojitha", "code": code}).get_json()
     assert data["ok"]
     assert data["recovery_code"] != account["recovery_code"]
     assert login(client).get_json()["ok"]
@@ -97,11 +123,27 @@ def test_success_resets_the_failure_count(client, account):
     assert login(client, password="wrongpass").get_json()["attempts_left"] == 4
 
 
+def test_test_page_needs_the_owner_logged_in(client, account):
+    assert try_test_page(client).status_code == 403
+    assert client.get("/api/stats?username=poojitha").status_code == 403
+    assert client.post("/api/tests/clear", json={"username": "poojitha", "password": PASSWORD}).status_code == 403
+    assert client.get("/api/me").get_json()["user"] is None
+    login(client)
+    assert client.get("/api/me").get_json()["user"] == "poojitha"
+    assert try_test_page(client).status_code == 200
+
+
+def test_logout_closes_the_test_page(client, account):
+    login(client)
+    client.post("/api/logout")
+    assert client.get("/api/me").get_json()["user"] is None
+    assert try_test_page(client).status_code == 403
+
+
 def test_test_page_records_attempts_and_stats(client, account):
+    login(client)
     for label, seed in [("owner", 1), ("owner", 2), ("impostor", 3)]:
-        res = client.post("/api/test", json={"username": "poojitha", "password": PASSWORD,
-                                             "keys": typing(seed=seed), "label": label})
-        assert res.get_json()["ok"]
+        assert try_test_page(client, label, seed).get_json()["ok"]
     stats = client.get("/api/stats?username=poojitha").get_json()
     assert len(stats["owner"]) == 2
     assert len(stats["impostor"]) == 1
@@ -109,13 +151,14 @@ def test_test_page_records_attempts_and_stats(client, account):
 
 
 def test_test_attempts_dont_count_towards_lockout(client, account):
+    login(client)
     for _ in range(6):
-        client.post("/api/test", json={"username": "poojitha", "password": PASSWORD,
-                                       "keys": typing(speed=0.4, seed=5), "label": "owner"})
+        try_test_page(client, seed=5, speed=0.4)
     assert login(client).status_code == 200
 
 
 def test_threshold_needs_the_password_and_a_sane_value(client, account):
+    login(client)
     url = "/api/threshold"
     assert client.post(url, json={"username": "poojitha", "password": "nope", "threshold": 2}).status_code == 401
     assert client.post(url, json={"username": "poojitha", "password": PASSWORD, "threshold": 50}).status_code == 400
@@ -124,14 +167,13 @@ def test_threshold_needs_the_password_and_a_sane_value(client, account):
 
 
 def test_clear_test_data(client, account):
-    client.post("/api/test", json={"username": "poojitha", "password": PASSWORD, "keys": typing(seed=1), "label": "owner"})
+    login(client)
+    try_test_page(client)
     assert client.post("/api/tests/clear", json={"username": "poojitha", "password": PASSWORD}).get_json()["ok"]
     assert client.get("/api/stats?username=poojitha").get_json()["owner"] == []
 
 
 def test_old_databases_are_upgraded(client, tmp_path, monkeypatch):
-    import sqlite3
-    import app
     old = tmp_path / "old.db"
     with sqlite3.connect(old) as conn:
         conn.executescript("""
@@ -142,9 +184,10 @@ def test_old_databases_are_upgraded(client, tmp_path, monkeypatch):
                                    created_at TEXT DEFAULT CURRENT_TIMESTAMP);
             INSERT INTO users VALUES ('old', 'x', '[]', 2.0);
         """)
-    monkeypatch.setattr(app, "DB_PATH", old)
-    app.init_db()
+    monkeypatch.setattr(cadence, "DB_PATH", old)
+    cadence.init_db()
     with sqlite3.connect(old) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(users)")}
         assert {"failed_logins", "locked_until", "recovery_hash"} <= cols
         assert conn.execute("SELECT username FROM users").fetchone() == ("old",)
+        assert conn.execute("SELECT name FROM sqlite_master WHERE name = 'alerts'").fetchone()

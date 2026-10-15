@@ -5,7 +5,7 @@ import secrets
 import sqlite3
 import time
 from pathlib import Path
-from flask import Flask, g, jsonify, render_template, request
+from flask import Flask, g, jsonify, render_template, request, session
 from werkzeug.security import check_password_hash, generate_password_hash
 import rhythm
 
@@ -19,6 +19,19 @@ LOCK_SECONDS = 15 * 60
 CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 app = Flask(__name__)
+
+
+def load_secret():
+    if os.environ.get("CADENCE_SECRET"):
+        return os.environ["CADENCE_SECRET"]
+    path = Path(__file__).parent / ".secret_key"
+    if not path.exists():
+        path.write_text(secrets.token_hex(32))
+    return path.read_text().strip()
+
+
+app.secret_key = load_secret()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
 
 def db():
     if "db" not in g:
@@ -58,6 +71,15 @@ def init_db():
         add_column(conn, "users", "failed_logins", "INTEGER NOT NULL DEFAULT 0")
         add_column(conn, "users", "locked_until", "REAL NOT NULL DEFAULT 0")
         add_column(conn, "users", "recovery_hash", "TEXT")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT NOT NULL,
+                created_at REAL NOT NULL,
+                details TEXT NOT NULL,
+                seen INTEGER NOT NULL DEFAULT 0
+            )
+        """)
 
 def fail(message, status=400, **extra):
     return jsonify(ok=False, error=message, **extra), status
@@ -126,11 +148,11 @@ def register_failure(username):
     return MAX_FAILS - fails
 
 def check_attempt(user, password, keys):
-    if user is None or not check_password_hash(user["pw_hash"], password):
-        return None, fail("Wrong username or password.", 401, reason="password")
     keys = clean_keys(keys, len(password))
     if keys is None:
         return None, fail("Couldn't read the typing rhythm. Type it again in one go.")
+    if user is None or not check_password_hash(user["pw_hash"], password):
+        return None, fail("Login failed.", 401)
     samples = json.loads(user["samples"])
     profile = rhythm.build_profile(samples)
     dist = rhythm.distance(profile, keys)
@@ -148,6 +170,59 @@ def check_attempt(user, password, keys):
         "attempt": rhythm.features(keys),
         "length": len(password),
     }, None
+
+def key_name(password, i):
+    ch = password[i] if 0 <= i < len(password) else "?"
+    return "space" if ch == " " else f"'{ch}'"
+
+
+def describe(item, password):
+    kind, i, r = item["kind"], item.get("i", 0), item.get("ratio", 1)
+    if kind == "hold":
+        if r > 1:
+            return f"held {key_name(password, i)} {r:.1f}x as long as you do"
+        return f"held {key_name(password, i)} only {r:.0%} as long as you do"
+    if kind == "gap":
+        pair = f"{key_name(password, i)} and {key_name(password, i + 1)}"
+        if r > 1:
+            return f"paused {r:.1f}x longer than you between {pair}"
+        return f"went between {pair} {1 / r:.1f}x faster than you"
+    if kind == "no_shift":
+        return f"typed {key_name(password, i)} without holding Shift"
+    if kind == "shift_side":
+        used, yours = ("right", "left") if item.get("side") == 1 else ("left", "right")
+        return f"used the {used} Shift for {key_name(password, i)}, you use the {yours}"
+    if kind == "speed":
+        if r < 1:
+            return f"typed the whole password {1 - r:.0%} faster than you usually do"
+        return f"typed the whole password {r - 1:.0%} slower than you usually do"
+    return "typed it differently"
+
+
+def record_alert(username, profile, keys):
+    db().execute(
+        "INSERT INTO alerts (username, created_at, details) VALUES (?, ?, ?)",
+        (username, time.time(), json.dumps(rhythm.explain(profile, keys))),
+    )
+
+
+def unseen_alerts(username, password):
+    rows = db().execute(
+        "SELECT created_at, details FROM alerts WHERE username = ? AND seen = 0 ORDER BY id",
+        (username,),
+    ).fetchall()
+    db().execute("UPDATE alerts SET seen = 1 WHERE username = ?", (username,))
+    return [
+        {"at": r["created_at"], "reasons": [describe(f, password) for f in json.loads(r["details"])]}
+        for r in rows
+    ]
+
+
+def owner_only(username):
+    if not username or session.get("user") != username:
+        return fail("Log in as this account first. This page is only for the account owner.", 403)
+    return None
+
 
 @app.get("/")
 def index():
@@ -191,24 +266,22 @@ def login():
     result, error = check_attempt(user, password, data.get("keys"))
     if error:
         if user is not None and error[1] == 401:
-            left = register_failure(username)
-            return fail("Wrong username or password.", 401, reason="password", attempts_left=left)
+            return fail("Login failed.", 401, attempts_left=register_failure(username))
         return error
-    if result["accepted"]:
-        samples = (result["samples"] + [result["keys"]])[-MAX_SAMPLES:]
-        db().execute(
-            "UPDATE users SET samples = ?, failed_logins = 0 WHERE username = ?",
-            (json.dumps(samples), username),
-        )
-        db().commit()
-        reason, left = None, None
-    else:
-        reason = "rhythm" if result["speed_ok"] else "speed"
-        left = register_failure(username)
+    if not result["accepted"]:
+        record_alert(username, result["profile"], result["keys"])
+        return fail("Login failed.", 401, attempts_left=register_failure(username))
+    samples = (result["samples"] + [result["keys"]])[-MAX_SAMPLES:]
+    db().execute(
+        "UPDATE users SET samples = ?, failed_logins = 0 WHERE username = ?",
+        (json.dumps(samples), username),
+    )
+    alerts = unseen_alerts(username, password)
+    db().commit()
+    session.clear()
+    session["user"] = username
     return jsonify(
-        ok=result["accepted"],
-        reason=reason,
-        attempts_left=left,
+        ok=True,
         distance=result["distance"],
         threshold=result["threshold"],
         tempo=result["tempo"],
@@ -216,7 +289,20 @@ def login():
         profile=result["profile"],
         attempt=result["attempt"],
         length=result["length"],
+        alerts=alerts,
     )
+
+
+@app.get("/api/me")
+def me():
+    return jsonify(user=session.get("user"))
+
+
+@app.post("/api/logout")
+def logout():
+    session.clear()
+    return jsonify(ok=True)
+
 
 @app.post("/api/unlock")
 def unlock():
@@ -236,6 +322,9 @@ def unlock():
 @app.post("/api/test")
 def test_attempt():
     data, username, password = read_body()
+    denied = owner_only(username)
+    if denied:
+        return denied
     label = data.get("label")
     if label not in ("owner", "impostor"):
         return fail("Say whether this attempt is you or someone else.")
@@ -252,6 +341,9 @@ def test_attempt():
 @app.get("/api/stats")
 def stats():
     username = request.args.get("username", "").strip().lower()
+    denied = owner_only(username)
+    if denied:
+        return denied
     user = get_user(username)
     if user is None:
         return fail("No such user.", 404)
@@ -269,6 +361,9 @@ def stats():
 @app.post("/api/threshold")
 def set_threshold():
     data, username, password = read_body()
+    denied = owner_only(username)
+    if denied:
+        return denied
     user = get_user(username)
     if user is None or not check_password_hash(user["pw_hash"], password):
         return fail("Wrong username or password.", 401)
@@ -285,6 +380,9 @@ def set_threshold():
 @app.post("/api/tests/clear")
 def clear_tests():
     _data, username, password = read_body()
+    denied = owner_only(username)
+    if denied:
+        return denied
     user = get_user(username)
     if user is None or not check_password_hash(user["pw_hash"], password):
         return fail("Wrong username or password.", 401)
