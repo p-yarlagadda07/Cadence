@@ -97,3 +97,22 @@ def auto_threshold(samples):
     scores = leave_one_out(samples)
     t = statistics.fmean(scores) + 2 * statistics.pstdev(scores)
     return min(max(t, 1.5), 4.0)
+
+def explain(profile, sample, limit=4):
+    findings = []
+    n = len(sample)
+    for idx, (x, m, s) in enumerate(zip(features(sample), profile["mean"], profile["spread"])):
+        z = abs(x - m) / s
+        if z >= 3 and m > 0:
+            kind, i = ("hold", idx) if idx < n else ("gap", idx - n)
+            findings.append((z, {"kind": kind, "i": i, "ratio": round(x / m, 2)}))
+    for key in profile["shift"]:
+        k = sample[key["pos"]]
+        if len(k) < 5:
+            findings.append((99, {"kind": "no_shift", "i": key["pos"]}))
+        elif k[4] != key["side"]:
+            findings.append((98, {"kind": "shift_side", "i": key["pos"], "side": k[4]}))
+    if not tempo_ok(profile, sample):
+        findings.append((97, {"kind": "speed", "ratio": round(tempo(sample) / profile["tempo"], 2)}))
+    findings.sort(key=lambda f: -f[0])
+    return [f for _, f in findings[:limit]]
