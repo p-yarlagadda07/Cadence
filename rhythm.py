@@ -5,6 +5,7 @@ MIN_TEMPO_SPREAD = 0.12
 TEMPO_LIMIT = 3
 SETTLED_PROFILE = 12
 SHIFT_PENALTY = 4.0
+FORGIVEN_KEYS = 2
 
 def tempo(sample):
     return sample[-1][1] - sample[0][0]
@@ -61,7 +62,8 @@ def tempo_ok(profile, sample):
     return abs(tempo(sample) - profile["tempo"]) <= limit * profile["tempo_spread"]
 
 def distance(profile, sample):
-    parts = [abs(x - m) / s for x, m, s in zip(features(sample), profile["mean"], profile["spread"])]
+    timing = sorted(abs(x - m) / s for x, m, s in zip(features(sample), profile["mean"], profile["spread"]))
+    parts = timing[:len(timing) - FORGIVEN_KEYS]
     for key in profile["shift"]:
         k = sample[key["pos"]]
         if len(k) < 5:

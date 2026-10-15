@@ -54,11 +54,20 @@ def test_a_different_rhythm_scores_higher():
 
 
 def test_consistent_keys_count_more_than_noisy_ones():
-    samples = [sample([100, 80 + d * 10], [200]) for d in range(-2, 3)]
+    samples = [sample([100, 80 + d * 10, 90, 110, 95], [200, 150, 170, 160]) for d in range(-2, 3)]
     profile = rhythm.build_profile(samples)
-    off_steady = sample([130, 80], [200])
-    off_noisy = sample([100, 110], [200])
+    off_steady = sample([120, 80, 120, 110, 95], [200, 150, 170, 190])
+    off_noisy = sample([100, 100, 120, 110, 95], [200, 150, 170, 190])
     assert rhythm.distance(profile, off_steady) > rhythm.distance(profile, off_noisy)
+
+
+def test_one_slip_is_forgiven():
+    mine = [sample([100 + d, 80, 90, 110, 95], [200, 150, 170, 160 - d]) for d in range(-2, 3)]
+    profile = rhythm.build_profile(mine)
+    slip = sample([100, 80, 90, 110, 95], [200, 450, 170, 160])
+    everywhere = sample([130, 105, 120, 140, 125], [240, 190, 210, 200])
+    assert rhythm.distance(profile, slip) == 0
+    assert rhythm.distance(profile, everywhere) > 2
 
 
 def test_shift_profile_is_learned():
