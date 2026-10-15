@@ -13,8 +13,10 @@ with a different rhythm, they don't get in.
 This is called keystroke dynamics, a type of behavioural biometrics.
 
 On the CMU keystroke benchmark (51 typists, 20,400 typed passwords) Cadence's
-matching gets a **5.7% equal error rate**, better than the 9.6% published for
-the same method. With real people on the live site it's about 7%.
+matching beats the published scaled Manhattan method in like-for-like tests:
+**9.1% vs 9.6%** with the paper's training setup, and **5.7% vs 8.4%** when
+both are trained on 8 typings of a familiar password, the way Cadence signs
+people up. With real people on the live site it's about 7%.
 
 **Live demo:** https://pyarlagadda07.pythonanywhere.com
 
