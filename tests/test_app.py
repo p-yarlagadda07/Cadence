@@ -202,7 +202,9 @@ def open_testing(client, minutes=60, note=""):
 
 def public_try(client, password=PASSWORD, seed=9, like_owner=False):
     keys = typing(seed=seed) if like_owner else typing(seed=seed, **OTHER)
-    return client.post("/api/testing/try", json={"username": "poojitha", "password": password, "keys": keys})
+    listing = client.get("/api/testing").get_json()["open"]
+    account = listing[0]["account"] if listing else rows("SELECT testing_code FROM users")[0][0]
+    return client.post("/api/testing/try", json={"account": account, "password": password, "keys": keys})
 
 
 def test_only_the_owner_can_open_testing(client, account):
@@ -224,9 +226,11 @@ def test_public_try_needs_an_open_window(client, account):
 
 def test_public_try_only_says_let_in_or_not(client, account):
     open_testing(client, note="The password is on my LinkedIn post")
-    listing = client.get("/api/testing").get_json()
-    assert listing["open"][0]["username"] == "poojitha"
-    assert listing["open"][0]["note"] == "The password is on my LinkedIn post"
+    listing = client.get("/api/testing")
+    assert "poojitha" not in listing.get_data(as_text=True)
+    assert listing.get_json()["open"][0]["note"] == "The password is on my LinkedIn post"
+    page = client.get("/").get_data(as_text=True)
+    assert "poojitha" not in page
     data = public_try(client).get_json()
     assert set(data) == {"ok", "let_in", "tries_left"}
     assert data["let_in"] is False
@@ -284,6 +288,16 @@ def test_closing_testing_stops_tries(client, account):
     client.post("/api/testing", json={"username": "poojitha", "minutes": 0})
     client.post("/api/logout")
     assert public_try(client).status_code == 403
+
+
+def test_old_codes_stop_working_after_a_new_round(client, account):
+    open_testing(client)
+    old = client.get("/api/testing").get_json()["open"][0]["account"]
+    open_testing(client)
+    res = client.post("/api/testing/try", json={"account": old, "password": PASSWORD, "keys": typing(seed=9)})
+    assert res.status_code == 403
+    assert client.post("/api/testing/try", json={"account": "", "password": PASSWORD,
+                                                 "keys": typing(seed=9)}).status_code == 403
 
 
 def test_testing_closes_by_itself(client, account):

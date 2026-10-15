@@ -52,13 +52,13 @@ async function loadTesting() {
   if (!me && open.length) {
     const pick = $("pub-user");
     const current = pick.value;
-    pick.replaceChildren(...open.map((o) => {
+    pick.replaceChildren(...open.map((o, i) => {
       const opt = document.createElement("option");
-      opt.value = o.username;
-      opt.textContent = o.username;
+      opt.value = o.account;
+      opt.textContent = `Account ${i + 1}`;
       return opt;
     }));
-    if (open.some((o) => o.username === current)) pick.value = current;
+    if (open.some((o) => o.account === current)) pick.value = current;
     $("pub-pick").hidden = open.length < 2;
     showPublicTarget();
   }
@@ -73,8 +73,8 @@ async function loadTesting() {
 }
 
 function showPublicTarget() {
-  const target = (testing.open || []).find((o) => o.username === $("pub-user").value) || testing.open[0];
-  $("pub-name").textContent = target.username;
+  const target = (testing.open || []).find((o) => o.account === $("pub-user").value) || testing.open[0];
+  $("pub-user").value = target.account;
   $("pub-note").textContent = target.note;
   $("pub-note").hidden = !target.note;
 }
@@ -367,7 +367,7 @@ $("pub-form").addEventListener("submit", async (e) => {
   const verdict = $("pub-verdict");
   verdict.textContent = "";
   if (!keys) return say(msg, "No corrections allowed. Type it again in one go.", "bad");
-  const data = await post("/api/testing/try", { username: $("pub-name").textContent, password, keys });
+  const data = await post("/api/testing/try", { account: $("pub-user").value, password, keys });
   const left = data.tries_left;
   const leftNote = left === undefined ? "" : ` ${left} ${left === 1 ? "try" : "tries"} left.`;
   if (!data.ok) {

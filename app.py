@@ -77,6 +77,7 @@ def init_db():
         add_column(conn, "users", "testing_until", "REAL NOT NULL DEFAULT 0")
         add_column(conn, "users", "testing_round", "INTEGER NOT NULL DEFAULT 0")
         add_column(conn, "users", "testing_note", "TEXT NOT NULL DEFAULT ''")
+        add_column(conn, "users", "testing_code", "TEXT NOT NULL DEFAULT ''")
         add_column(conn, "attempts", "public", "INTEGER NOT NULL DEFAULT 0")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS public_tries (
@@ -380,10 +381,10 @@ def tries_used(user, column, value):
 @app.get("/api/testing")
 def testing_status():
     rows = db().execute(
-        "SELECT username, testing_until, testing_note FROM users WHERE testing_until > ? ORDER BY username",
+        "SELECT testing_code, testing_until, testing_note FROM users WHERE testing_until > ? ORDER BY testing_until",
         (time.time(),),
     ).fetchall()
-    open_now = [{"username": r["username"], "until": r["testing_until"], "note": r["testing_note"]} for r in rows]
+    open_now = [{"account": r["testing_code"], "until": r["testing_until"], "note": r["testing_note"]} for r in rows]
     mine = None
     if session.get("user"):
         user = get_user(session["user"])
@@ -419,8 +420,9 @@ def set_testing():
     note = str(data.get("note", "")).strip()[:200]
     until = time.time() + minutes * 60
     db().execute(
-        "UPDATE users SET testing_until = ?, testing_round = testing_round + 1, testing_note = ? WHERE username = ?",
-        (until, note, username),
+        "UPDATE users SET testing_until = ?, testing_round = testing_round + 1, testing_note = ?, testing_code = ? "
+        "WHERE username = ?",
+        (until, note, secrets.token_urlsafe(9), username),
     )
     db().commit()
     return jsonify(ok=True, open=True, until=until)
@@ -428,10 +430,12 @@ def set_testing():
 
 @app.post("/api/testing/try")
 def public_try():
-    data, username, password = read_body()
-    user = get_user(username)
+    data, _username, password = read_body()
+    code = str(data.get("account", ""))
+    user = db().execute("SELECT * FROM users WHERE testing_code = ? AND testing_code != ''", (code,)).fetchone()
     if not testing_open(user):
         return fail("Testing isn't open for this account right now.", 403)
+    username = user["username"]
     tester, network = tester_id(), client_network()
     used = tries_used(user, "tester", tester)
     if used >= PUBLIC_TRIES or tries_used(user, "network", network) >= PUBLIC_TRIES_PER_NETWORK:
