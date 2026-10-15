@@ -89,15 +89,30 @@
           </figure>
         </div>
         <p class="legend"><i class="sw saved"></i>your usual rhythm <i class="sw band"></i>normal range <i class="sw now"></i>this attempt</p>
+        <div class="row">
+          <button id="li-logout" class="btn ghost" type="button">Log out</button>
+        </div>
+      </div>
+
+      <div class="card alerts" id="li-alerts" hidden>
+        <h3>Blocked attempts since you last logged in</h3>
+        <p class="small">Someone typed your correct password but their typing didn't match yours. Your password may be known to someone else, so think about changing it.</p>
+        <ul id="li-alert-list"></ul>
       </div>
     </section>
 
     <section class="panel" id="test">
+      <div class="card" id="t-locked">
+        <p class="lead">Log in first.</p>
+        <p class="small">The test page shows how close each attempt was, which would help someone practise copying you. So it only opens for the account owner, after a successful login. Once you're in, friends can test on this browser.</p>
+      </div>
+
+      <div id="t-open" hidden>
       <div class="card">
         <p class="lead">Hand the keyboard to friends, give them your password, and see if they can get in. Mark each attempt so the numbers mean something.</p>
         <label class="field">
           <span>Account to test</span>
-          <input id="t-user" type="text" autocomplete="off" spellcheck="false">
+          <input id="t-user" type="text" autocomplete="off" spellcheck="false" readonly>
         </label>
         <div class="who" role="radiogroup">
           <label><input type="radio" name="who" value="owner" checked> It's me</label>
@@ -137,6 +152,7 @@
         </div>
         <p class="msg" id="s-msg"></p>
       </div>
+      </div>
     </section>
 
     <section class="panel" id="how">
@@ -150,7 +166,11 @@
         <h2>Signing up</h2>
         <p>You type the password 8 times. The app works out your average for each of those numbers and how much it usually varies. If one sample is way off (you got distracted, a typo you pushed through) it's thrown out.</p>
         <h2>Logging in</h2>
-        <p>Each number from the new attempt is compared to your average, scaled by how much that number normally varies for you. Those are averaged into one distance score. Below the threshold you're in. This is called scaled Manhattan distance and it's one of the best simple detectors in keystroke dynamics research.</p>
+        <p>Each number from the new attempt is compared to your average, scaled by how much that number normally varies for you. Those are averaged into one distance score. Below the threshold you're in. The two numbers furthest from your usual are left out, so one hesitation doesn't sink an attempt. This is called scaled Manhattan distance and it's one of the best simple detectors in keystroke dynamics research.</p>
+        <h2>What a failed login shows</h2>
+        <p>Nothing beyond "Login failed". Showing the score or which check failed would tell someone how close they got, and they could keep adjusting until they got in. Your charts only appear after you've logged in.</p>
+        <h2>Security alerts</h2>
+        <p>If someone types your correct password but their typing doesn't match, the attempt is saved. Next time you log in, you see what happened and why it was blocked, for example that they held a key twice as long as you or used the other Shift key. A blocked attempt with the right password means someone knows it, so it's a good moment to change it. Only key positions are stored, never the characters, so the alert doesn't leak your password.</p>
         <h2>Speed check</h2>
         <p>The app also remembers how long you usually take to type the whole password. Someone who copies your pattern but types it a lot faster or slower than you ever do gets blocked, even if their rhythm score looks fine.</p>
         <h2>Lockout</h2>

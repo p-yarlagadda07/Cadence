@@ -196,6 +196,14 @@ canvas { width: 100%; display: block; }
 .notice p { margin-top: 0; }
 .code { font-size: 24px; font-weight: 600; letter-spacing: 0.08em; color: var(--accent); margin: 6px 0 14px; }
 
+.alerts { border-color: var(--bad); }
+.alerts h3 { margin: 0 0 6px; font: 600 18px Fraunces, Georgia, serif; color: var(--bad); }
+.alerts ul { list-style: none; padding: 0; margin: 12px 0 0; }
+.alerts li { display: flex; gap: 14px; padding: 9px 0; border-top: 1px dashed var(--line); }
+.alerts li b { flex: none; font: 600 13px "JetBrains Mono", monospace; color: var(--muted); padding-top: 2px; }
+.alerts li ul { list-style: disc; margin: 4px 0 0; padding-left: 18px; }
+.alerts li li { display: list-item; border: 0; padding: 2px 0; }
+
 .lead { margin-top: 0; }
 .who { display: flex; gap: 18px; margin-bottom: 14px; }
 .who label { cursor: pointer; }

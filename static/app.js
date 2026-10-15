@@ -20,18 +20,35 @@ function recall(key) {
   }
 }
 
+let me = null;
+
 function remember(username) {
   if (!username) return;
   store("user", username);
   $("li-user").value = username;
-  $("t-user").value = username;
+}
+
+function applyAccess() {
+  $("t-locked").hidden = Boolean(me);
+  $("t-open").hidden = !me;
+  $("t-user").value = me || "";
+}
+
+async function refreshMe() {
+  try {
+    const res = await fetch("/api/me");
+    me = (await res.json()).user;
+  } catch {
+    me = null;
+  }
+  applyAccess();
 }
 
 function showTab(name) {
   document.querySelectorAll(".tab").forEach((t) => t.classList.toggle("active", t.dataset.tab === name));
   document.querySelectorAll(".panel").forEach((p) => p.classList.toggle("active", p.id === name));
   store("tab", name);
-  if (name === "test" && $("t-user").value) loadStats();
+  if (name === "test" && me) loadStats();
 }
 
 function say(el, text, kind = "") {
@@ -206,13 +223,51 @@ $("li-form").addEventListener("submit", async (e) => {
   const username = $("li-user").value.trim();
   const data = await post("/api/login", { username, password, keys });
   $("li-unlock").hidden = !(data.reason === "locked" || data.attempts_left === 0);
-  if (data.reason === "locked" || data.reason === "password" || data.error) {
+  if (!data.ok) {
     $("li-result").hidden = true;
+    $("li-alerts").hidden = true;
     return say(msg, data.error + attemptsNote(data), "bad");
   }
   remember(username);
-  say(msg, attemptsNote(data).trim(), "bad");
+  me = username;
+  applyAccess();
+  say(msg, "");
   showResult(data);
+  showAlerts(data.alerts || []);
+});
+
+function showAlerts(alerts) {
+  const list = $("li-alert-list");
+  list.replaceChildren();
+  $("li-alerts").hidden = alerts.length === 0;
+  alerts.forEach((a) => {
+    const li = document.createElement("li");
+    const when = document.createElement("b");
+    when.textContent = new Date(a.at * 1000).toLocaleString([], {
+      day: "numeric", month: "short", hour: "2-digit", minute: "2-digit",
+    });
+    const why = document.createElement("div");
+    const intro = document.createElement("span");
+    intro.textContent = a.reasons.length ? "Compared with you, they:" : "Their typing was a little off on many keys at once.";
+    const reasons = document.createElement("ul");
+    a.reasons.forEach((r) => {
+      const item = document.createElement("li");
+      item.textContent = r;
+      reasons.append(item);
+    });
+    why.append(intro, reasons);
+    li.append(when, why);
+    list.append(li);
+  });
+}
+
+$("li-logout").addEventListener("click", async () => {
+  await post("/api/logout", {});
+  me = null;
+  applyAccess();
+  $("li-result").hidden = true;
+  $("li-alerts").hidden = true;
+  say($("li-msg"), "Logged out.", "good");
 });
 
 $("li-unlock-btn").addEventListener("click", async () => {
@@ -230,18 +285,11 @@ function showResult(data) {
   const verdict = $("li-verdict");
   const took = (data.tempo / 1000).toFixed(2);
   const usual = (data.usual_tempo / 1000).toFixed(2);
-  if (data.ok) {
-    verdict.textContent = "Welcome back. That's you.";
-  } else if (data.reason === "speed") {
-    const way = data.tempo < data.usual_tempo ? "faster" : "slower";
-    verdict.textContent = `Right password, but much ${way} than you type.`;
-  } else {
-    verdict.textContent = "Right password, wrong rhythm.";
-  }
-  verdict.className = "verdict " + (data.ok ? "good" : "bad");
+  verdict.textContent = "Welcome back. That's you.";
+  verdict.className = "verdict good";
   const match = Math.max(0, Math.min(100, 100 - (data.distance / data.threshold) * 50));
   $("li-fill").style.width = match + "%";
-  $("li-fill").style.background = data.ok ? "var(--good)" : "var(--bad)";
+  $("li-fill").style.background = "var(--good)";
   $("li-numbers").textContent =
     `match ${match.toFixed(0)}%  ·  distance ${data.distance.toFixed(2)}  ·  threshold ${data.threshold.toFixed(2)}  ·  took ${took}s (you usually take ${usual}s)`;
   const n = data.length;
@@ -265,7 +313,7 @@ let stats = null;
 
 $("t-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const username = $("t-user").value.trim();
+  const username = me;
   const password = $("t-pass").value;
   const keys = tRec.take();
   tRec.reset();
@@ -276,12 +324,6 @@ $("t-form").addEventListener("submit", async (e) => {
   const data = await post("/api/test", { username, password, keys, label });
   if (!data.ok) return say(msg, data.error, "bad");
   say(msg, "");
-  remember(username);
-  loadStats();
-});
-
-$("t-user").addEventListener("change", () => {
-  remember($("t-user").value.trim());
   loadStats();
 });
 
@@ -296,9 +338,8 @@ function drawLog() {
 }
 
 async function loadStats() {
-  const username = $("t-user").value.trim();
-  if (!username) return;
-  const res = await fetch("/api/stats?username=" + encodeURIComponent(username));
+  if (!me) return;
+  const res = await fetch("/api/stats?username=" + encodeURIComponent(me));
   const data = await res.json();
   if (!data.ok) return say($("s-msg"), data.error, "bad");
   stats = data;
@@ -350,7 +391,7 @@ $("s-suggest").addEventListener("click", () => {
 
 $("s-save").addEventListener("click", async () => {
   const data = await post("/api/threshold", {
-    username: $("t-user").value.trim(),
+    username: me,
     password: $("s-pw").value,
     threshold: Number($("s-thr").value),
   });
@@ -363,7 +404,7 @@ $("s-save").addEventListener("click", async () => {
 $("s-clear").addEventListener("click", async () => {
   if (!confirm("Delete all test attempts for this account?")) return;
   const data = await post("/api/tests/clear", {
-    username: $("t-user").value.trim(),
+    username: me,
     password: $("s-pw").value,
   });
   $("s-pw").value = "";
@@ -498,4 +539,4 @@ window.addEventListener("resize", () => {
 });
 
 remember(recall("user"));
-showTab(recall("tab") || "signup");
+refreshMe().then(() => showTab(recall("tab") || "signup"));
