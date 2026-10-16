@@ -98,3 +98,29 @@ the hardest part to copy.
 The one place it does slightly worse is someone still learning their password
 (30.0% to 31.0%), which is why the sign up page asks for a password you
 already type often.
+
+## Asking for a second typing on close calls
+
+Most wrong decisions are attempts that land near the threshold. I tried asking
+for the password a second time when the first score is near it, and deciding
+on the average of both. Each person's threshold is set at their equal error
+rate, and impostor attempts come in pairs from the same impostor. It uses the
+same 8 familiar typings as the main results. To run it:
+
+```
+python benchmark/retype.py
+```
+
+| Rule | Real user blocked | Impostor let in | Real user asked twice |
+| --- | --- | --- | --- |
+| One typing | 5.7% | 4.6% | 0% |
+| Retype if score is 80% to 130% of threshold | 4.1% | 3.7% | 20% |
+| Retype if score is 70% to 150% of threshold | 4.3% | 3.5% | 35% |
+| Retype only when it would have failed (100% to 130%) | 3.4% | 5.6% | 6% |
+| Always type twice | 5.2% | 3.4% | 100% |
+
+80% to 130% gives the best balance, and both halves of the typists agree
+(4.0% / 3.7% and 4.2% / 3.6%). Only retyping attempts that would have failed
+looks good for the real user but lets more impostors in, because it's just a
+second chance. The app uses 80% to 130%, and asks everyone who isn't clearly a
+match to retype so the request itself doesn't hint that they were close.

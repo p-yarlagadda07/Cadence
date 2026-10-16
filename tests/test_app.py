@@ -8,11 +8,15 @@ from conftest import PASSWORD, typing
 OTHER = dict(holds=[160, 60, 70, 150, 140, 60, 70, 140, 60], gaps=[120, 260, 110, 230, 130, 240, 120, 250])
 
 
-def login(client, keys=None, password=PASSWORD, username="poojitha", ip=None):
+def login(client, keys=None, password=PASSWORD, username="poojitha", ip=None, again=None):
     keys = keys if keys is not None else typing(seed=100)
     headers = {"X-Real-IP": ip} if ip else {}
-    return client.post("/api/login", json={"username": username, "password": password, "keys": keys},
-                       headers=headers)
+    body = {"username": username, "password": password, "keys": keys}
+    res = client.post("/api/login", json=body, headers=headers)
+    if res.status_code == 200 and res.get_json().get("again"):
+        body["keys"] = again if again is not None else keys
+        res = client.post("/api/login", json=body, headers=headers)
+    return res
 
 
 def try_test_page(client, label="owner", seed=1, **kw):
@@ -262,7 +266,11 @@ def public_try(client, password=PASSWORD, seed=9, like_owner=False):
     keys = typing(seed=seed) if like_owner else typing(seed=seed, **OTHER)
     listing = client.get("/api/testing").get_json()["open"]
     account = listing[0]["account"] if listing else rows("SELECT testing_code FROM users")[0][0]
-    return client.post("/api/testing/try", json={"account": account, "password": password, "keys": keys})
+    body = {"account": account, "password": password, "keys": keys}
+    res = client.post("/api/testing/try", json=body)
+    if res.status_code == 200 and res.get_json().get("again"):
+        res = client.post("/api/testing/try", json=body)
+    return res
 
 
 def test_only_the_owner_can_open_testing(client, account):
@@ -363,3 +371,66 @@ def test_testing_closes_by_itself(client, account):
     with sqlite3.connect(cadence.DB_PATH) as conn:
         conn.execute("UPDATE users SET testing_until = 1")
     assert public_try(client).status_code == 403
+
+
+def first_typing(client, keys, password=PASSWORD):
+    return client.post("/api/login", json={"username": "poojitha", "password": password, "keys": keys})
+
+
+def score_of(keys):
+    samples = json.loads(rows("SELECT samples FROM users")[0][0])
+    return cadence.rhythm.distance(cadence.rhythm.build_profile(samples), keys)
+
+
+def set_threshold(value):
+    with sqlite3.connect(cadence.DB_PATH) as conn:
+        conn.execute("UPDATE users SET threshold = ?", (value,))
+
+
+def test_asking_to_retype_gives_nothing_away(client, account):
+    replies = []
+    for kw in [dict(password="wrongpass"), dict(keys=typing(seed=9, **OTHER)), dict(keys=typing(speed=0.4, seed=3))]:
+        client.post("/api/logout")
+        res = first_typing(client, kw.get("keys", typing(seed=1)), kw.get("password", PASSWORD))
+        replies.append((res.status_code, res.get_json()))
+    assert replies[0] == replies[1] == replies[2]
+    assert replies[0][1]["again"] is True
+    with client.session_transaction() as s:
+        assert set(s) == {"pending"}
+        assert len(s["pending"]) > 15
+
+
+def test_a_close_call_is_settled_by_the_second_typing(client, account):
+    keys = typing(seed=100)
+    set_threshold(score_of(keys) * 1.05)
+    assert first_typing(client, keys).get_json()["again"]
+    assert first_typing(client, keys).get_json()["ok"]
+
+
+def test_a_close_call_followed_by_someone_else_fails(client, account):
+    keys = typing(seed=100)
+    set_threshold(score_of(keys) * 1.05)
+    first_typing(client, keys)
+    res = first_typing(client, typing(seed=9, **OTHER))
+    assert res.status_code == 401
+
+
+def test_a_far_off_first_typing_cant_be_saved(client, account):
+    first_typing(client, typing(seed=9, **OTHER))
+    assert first_typing(client, typing(seed=100)).status_code == 401
+
+
+def test_a_clear_match_needs_no_retype(client, account):
+    keys = typing(seed=100)
+    set_threshold(score_of(keys) * 2)
+    assert first_typing(client, keys).get_json()["ok"]
+
+
+def test_public_retype_uses_one_try(client, account):
+    open_testing(client)
+    listing = client.get("/api/testing").get_json()["open"]
+    body = {"account": listing[0]["account"], "password": PASSWORD, "keys": typing(seed=9, **OTHER)}
+    first = client.post("/api/testing/try", json=body).get_json()
+    assert first == {"ok": True, "again": True, "tries_left": 14}
+    second = client.post("/api/testing/try", json=body).get_json()
+    assert second == {"ok": True, "let_in": False, "tries_left": 14}

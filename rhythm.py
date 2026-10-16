@@ -6,6 +6,8 @@ TEMPO_LIMIT = 3
 SETTLED_PROFILE = 12
 SHIFT_PENALTY = 4.0
 FORGIVEN_KEYS = 2
+MIN_THRESHOLD = 1.5
+MAX_THRESHOLD = 2.2
 
 def tempo(sample):
     return sample[-1][1] - sample[0][0]
@@ -96,7 +98,7 @@ def drop_outliers(samples, keep_at_least=6):
 def auto_threshold(samples):
     scores = leave_one_out(samples)
     t = statistics.fmean(scores) + 2 * statistics.pstdev(scores)
-    return min(max(t, 1.5), 4.0)
+    return min(max(t, MIN_THRESHOLD), MAX_THRESHOLD)
 
 def explain(profile, sample, limit=4):
     findings = []

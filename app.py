@@ -19,6 +19,9 @@ MAX_FAILS = 5
 PUBLIC_TRIES = 15
 PUBLIC_TRIES_PER_NETWORK = 60
 MAX_TESTING_MINUTES = 7 * 24 * 60
+SURE_PASS = 0.8
+CLOSE_CALL = 1.3
+RETYPE_SECONDS = 120
 FAILS_PER_NETWORK = 40
 SIGNUPS_PER_NETWORK = 20
 HOUR = 60 * 60
@@ -114,6 +117,18 @@ def init_db():
             )
         """)
         conn.execute("CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS pending (
+                token TEXT PRIMARY KEY,
+                username TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                first REAL,
+                first_speed INTEGER NOT NULL DEFAULT 0,
+                close INTEGER NOT NULL DEFAULT 0,
+                keys TEXT,
+                created_at REAL NOT NULL
+            )
+        """)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS signups (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -242,6 +257,44 @@ def check_attempt(user, password, keys):
         "length": len(password),
     }, None
 
+def first_look(user, result):
+    if result is None:
+        return "no"
+    t = user["threshold"]
+    if result["speed_ok"] and result["distance"] <= SURE_PASS * t:
+        return "yes"
+    if result["speed_ok"] and result["distance"] <= CLOSE_CALL * t:
+        return "close"
+    return "no"
+
+def ask_again(username, kind, result, close):
+    token = secrets.token_urlsafe(16)
+    db().execute("DELETE FROM pending WHERE created_at < ?", (time.time() - RETYPE_SECONDS,))
+    db().execute(
+        "INSERT INTO pending (token, username, kind, first, first_speed, close, keys, created_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (token, username, kind, result["distance"] if result else None, int(bool(result and result["speed_ok"])),
+         int(close), json.dumps(result["keys"]) if result else None, time.time()),
+    )
+    session["pending"] = token
+
+def take_pending(username, kind):
+    token = session.pop("pending", None)
+    if not token:
+        return None
+    row = db().execute(
+        "SELECT * FROM pending WHERE token = ? AND username = ? AND kind = ? AND created_at > ?",
+        (token, username, kind, time.time() - RETYPE_SECONDS),
+    ).fetchone()
+    db().execute("DELETE FROM pending WHERE token = ?", (token,))
+    return row
+
+def second_look(user, pending, result):
+    if result is None or not pending["close"] or not result["speed_ok"]:
+        return False, pending["first"]
+    both = round((pending["first"] + result["distance"]) / 2, 3)
+    return both <= user["threshold"], both
+
 def key_name(password, i):
     ch = password[i] if 0 <= i < len(password) else "?"
     return "space" if ch == " " else f"'{ch}'"
@@ -353,22 +406,40 @@ def login():
     network = client_network()
     if network_blocked(network):
         return fail("Too many failed logins from your network. Try again in an hour.", 429)
-    wait = locked_for(username, network)
-    if wait:
-        return fail(
-            f"Too many failed attempts. Try again in {wait} min, or unlock with your recovery code.",
-            423, reason="locked",
-        )
+    pending = take_pending(username, "login")
+    if pending is None:
+        wait = locked_for(username, network)
+        if wait:
+            return fail(
+                f"Too many failed attempts. Try again in {wait} min, or unlock with your recovery code.",
+                423, reason="locked",
+            )
     user = get_user(username)
     result, error = check_attempt(user, password, data.get("keys"))
-    if error:
-        if error[1] == 401:
-            return fail("Login failed.", 401, attempts_left=register_failure(username, network))
+    if error and error[1] != 401:
+        db().commit()
         return error
-    if not result["accepted"]:
-        record_alert(username, result["profile"], result["keys"])
-        return fail("Login failed.", 401, attempts_left=register_failure(username, network))
-    samples = (result["samples"] + [result["keys"]])[-MAX_SAMPLES:]
+    if pending is None:
+        look = first_look(user, result)
+        if look != "yes":
+            register_failure(username, network)
+            ask_again(username, "login", result, look == "close")
+            db().commit()
+            return jsonify(ok=False, again=True, error="Type it once more.")
+        keep = result["keys"]
+    else:
+        passed, both = second_look(user, pending, result)
+        if not passed:
+            first_keys = json.loads(pending["keys"]) if pending["keys"] else None
+            if user is not None and (result or first_keys):
+                profile = rhythm.build_profile(json.loads(user["samples"]))
+                record_alert(username, profile, first_keys or result["keys"])
+            db().commit()
+            return fail("Login failed.", 401,
+                        attempts_left=max(0, MAX_FAILS - len(recent_failures(username, network))))
+        keep = result["keys"] if result["distance"] <= pending["first"] else json.loads(pending["keys"])
+        result["distance"] = both
+    samples = (result["samples"] + [keep])[-MAX_SAMPLES:]
     db().execute("UPDATE users SET samples = ? WHERE username = ?", (json.dumps(samples), username))
     clear_failures(username, network)
     alerts = unseen_alerts(username, password)
@@ -513,27 +584,42 @@ def public_try():
     if not testing_open(user):
         return fail("Testing isn't open for this account right now.", 403)
     username = user["username"]
+    kind = "public:" + code
     tester, network = tester_id(), client_network()
+    pending = take_pending(username, kind)
     used = tries_used(user, "tester", tester)
-    if used >= PUBLIC_TRIES or tries_used(user, "network", network) >= PUBLIC_TRIES_PER_NETWORK:
+    if pending is None and (used >= PUBLIC_TRIES or tries_used(user, "network", network) >= PUBLIC_TRIES_PER_NETWORK):
         return fail("You've used all your tries for this round. Thanks for testing!", 429, tries_left=0)
     result, error = check_attempt(user, password, data.get("keys"))
     if error and error[1] != 401:
+        db().commit()
         return error
-    db().execute(
-        "INSERT INTO public_tries (username, round, tester, network, created_at) VALUES (?, ?, ?, ?, ?)",
-        (username, user["testing_round"], tester, network, time.time()),
-    )
-    left = PUBLIC_TRIES - used - 1
+    if pending is None:
+        db().execute(
+            "INSERT INTO public_tries (username, round, tester, network, created_at) VALUES (?, ?, ?, ?, ?)",
+            (username, user["testing_round"], tester, network, time.time()),
+        )
+        used += 1
+    left = PUBLIC_TRIES - used
     if error:
         db().commit()
         return fail("That's not the right password.", 401, tries_left=left)
+    if pending is None:
+        look = first_look(user, result)
+        if look != "yes":
+            ask_again(username, kind, result, look == "close")
+            db().commit()
+            return jsonify(ok=True, again=True, tries_left=left)
+        let_in, score, speed = True, result["distance"], True
+    else:
+        let_in, score = second_look(user, pending, result)
+        speed = bool(result["speed_ok"]) if pending["close"] else bool(pending["first_speed"])
     db().execute(
         "INSERT INTO attempts (username, label, distance, tempo_ok, public) VALUES (?, 'impostor', ?, ?, 1)",
-        (username, result["distance"], int(result["speed_ok"])),
+        (username, score, int(speed)),
     )
     db().commit()
-    return jsonify(ok=True, let_in=result["accepted"], tries_left=left)
+    return jsonify(ok=True, let_in=let_in, tries_left=left)
 
 
 @app.get("/api/stats")

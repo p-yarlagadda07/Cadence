@@ -277,6 +277,7 @@ $("li-form").addEventListener("submit", async (e) => {
   if (!data.ok) {
     $("li-result").hidden = true;
     $("li-alerts").hidden = true;
+    if (data.again) return say(msg, "Type it once more.");
     return say(msg, data.error + attemptsNote(data), "bad");
   }
   remember(username);
@@ -375,6 +376,7 @@ $("pub-form").addEventListener("submit", async (e) => {
     if (left === 0) $("pub-pass").disabled = true;
     return say(msg, data.error + (left ? leftNote : ""), "bad");
   }
+  if (data.again) return say(msg, "Type it once more.");
   verdict.textContent = data.let_in ? "Let in." : "Blocked.";
   verdict.className = "verdict " + (data.let_in ? "good" : "bad");
   if (left === 0) {

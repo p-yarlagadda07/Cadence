@@ -129,6 +129,26 @@ New accounts also get some extra speed leniency until they have 12 samples.
 Blocked logins never update the profile, otherwise someone could slowly train
 your account to accept them.
 
+**Close calls.** One typing is a small sample, and a lot of mistakes happen
+right around the threshold. So unless an attempt is clearly you (under 80% of
+your threshold), the app asks you to type it once more. If the first one was a
+close call (up to 130% of the threshold), it decides on the average of the two.
+If the first one was far off, the second can't save it. On the CMU data this
+cut wrong rejections from 5.7% to 4.1% and impostors getting in from 4.6% to
+3.7%, the same on both halves of the typists, and you only get asked about one
+time in five.
+
+The catch is that "type it once more" could tell an impostor they were close.
+So everyone who isn't clearly you gets asked, whether they were close, way off,
+or typed the wrong password. The second request means nothing on its own. The
+first typing's score is kept on the server, not in the browser, and the pair
+counts as one attempt towards the lockout.
+
+**Starting threshold.** At sign up the threshold comes from how much your 8
+typings vary, but it's capped at 2.2. Before the cap it once came out at 2.60,
+which let 29% of impostors in, and every time I tuned it with real attempts it
+ended up between 1.6 and 1.95.
+
 **Lockout.** After 5 failed logins in a row (wrong password or wrong rhythm)
 the account locks for 15 minutes. Without this, someone who knows your
 password could keep trying until one attempt happens to land close enough.

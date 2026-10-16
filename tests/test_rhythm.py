@@ -137,6 +137,6 @@ def test_auto_threshold_has_a_floor_for_very_steady_typists():
     assert rhythm.auto_threshold(samples) == 1.5
 
 
-def test_auto_threshold_stays_in_range():
-    wild = [sample([100 * 2 ** i, 80], [200 + 50 * i]) for i in range(8)]
-    assert 1.5 <= rhythm.auto_threshold(wild) <= 4.0
+def test_auto_threshold_never_starts_too_loose(monkeypatch):
+    monkeypatch.setattr(rhythm, "leave_one_out", lambda samples: [2.5, 3.0, 4.0])
+    assert rhythm.auto_threshold([]) == rhythm.MAX_THRESHOLD
