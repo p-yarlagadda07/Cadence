@@ -434,3 +434,23 @@ def test_public_retype_uses_one_try(client, account):
     assert first == {"ok": True, "again": True, "tries_left": 14}
     second = client.post("/api/testing/try", json=body).get_json()
     assert second == {"ok": True, "let_in": False, "tries_left": 14}
+
+
+def test_retype_can_be_switched_off(client, account):
+    runner = cadence.app.test_cli_runner()
+    assert "one typing" in runner.invoke(args=["retype", "off"]).output
+    keys = typing(seed=100)
+    set_threshold(score_of(keys) * 1.05)
+    assert first_typing(client, keys).get_json()["ok"]
+    client.post("/api/logout")
+    res = first_typing(client, typing(seed=9, **OTHER))
+    assert res.status_code == 401
+    assert set(res.get_json()) == {"ok", "error", "attempts_left"}
+    assert first_typing(client, keys, password="wrongpass").get_json() == res.get_json() | {"attempts_left": 3}
+    open_testing(client)
+    listing = client.get("/api/testing").get_json()["open"]
+    body = {"account": listing[0]["account"], "password": PASSWORD, "keys": typing(seed=9, **OTHER)}
+    assert client.post("/api/testing/try", json=body).get_json() == {"ok": True, "let_in": False, "tries_left": 14}
+    runner.invoke(args=["retype", "on"])
+    client.post("/api/logout")
+    assert first_typing(client, typing(seed=9, **OTHER)).get_json()["again"]

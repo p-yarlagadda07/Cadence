@@ -144,6 +144,12 @@ or typed the wrong password. The second request means nothing on its own. The
 first typing's score is kept on the server, not in the browser, and the pair
 counts as one attempt towards the lockout.
 
+It can be switched off, which goes back to deciding on a single typing:
+
+```
+python -m flask --app app retype off
+```
+
 **Starting threshold.** At sign up the threshold comes from how much your 8
 typings vary, but it's capped at 2.2. Before the cap it once came out at 2.60,
 which let 29% of impostors in, and every time I tuned it with real attempts it

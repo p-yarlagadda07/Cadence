@@ -258,6 +258,8 @@ def check_attempt(user, password, keys):
     }, None
 
 def first_look(user, result):
+    if not setting_on("retype"):
+        return "yes" if result is not None and result["accepted"] else "final"
     if result is None:
         return "no"
     t = user["threshold"]
@@ -348,24 +350,40 @@ def owner_only(username):
     return None
 
 
-def signups_open():
-    row = db().execute("SELECT value FROM settings WHERE key = 'signups'").fetchone()
+def setting_on(key):
+    row = db().execute("SELECT value FROM settings WHERE key = ?", (key,)).fetchone()
     return row is None or row[0] == "on"
+
+
+def signups_open():
+    return setting_on("signups")
+
+
+def switch(key, state):
+    init_db()
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)", (key, state))
 
 
 @app.cli.command("signups")
 @click.argument("state", type=click.Choice(["on", "off"]))
 def set_signups(state):
-    init_db()
-    with sqlite3.connect(DB_PATH) as conn:
-        conn.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('signups', ?)", (state,))
+    switch("signups", state)
     click.echo(f"Sign-ups are now {'open' if state == 'on' else 'closed'}.")
+
+
+@app.cli.command("retype")
+@click.argument("state", type=click.Choice(["on", "off"]))
+def set_retype(state):
+    switch("retype", state)
+    click.echo("Close calls now need a second typing." if state == "on" else "Back to one typing per attempt.")
 
 
 @app.get("/")
 def index():
     return render_template("index.html", enroll_samples=ENROLL_SAMPLES, max_fails=MAX_FAILS,
-                           public_tries=PUBLIC_TRIES, signups=signups_open())
+                           public_tries=PUBLIC_TRIES, signups=signups_open(),
+                           retype=setting_on("retype"))
 
 @app.post("/api/enroll")
 def enroll():
@@ -421,6 +439,10 @@ def login():
         return error
     if pending is None:
         look = first_look(user, result)
+        if look == "final":
+            if result is not None:
+                record_alert(username, result["profile"], result["keys"])
+            return fail("Login failed.", 401, attempts_left=register_failure(username, network))
         if look != "yes":
             register_failure(username, network)
             ask_again(username, "login", result, look == "close")
@@ -606,11 +628,11 @@ def public_try():
         return fail("That's not the right password.", 401, tries_left=left)
     if pending is None:
         look = first_look(user, result)
-        if look != "yes":
+        if look in ("no", "close"):
             ask_again(username, kind, result, look == "close")
             db().commit()
             return jsonify(ok=True, again=True, tries_left=left)
-        let_in, score, speed = True, result["distance"], True
+        let_in, score, speed = look == "yes", result["distance"], bool(result["speed_ok"])
     else:
         let_in, score = second_look(user, pending, result)
         speed = bool(result["speed_ok"]) if pending["close"] else bool(pending["first_speed"])
